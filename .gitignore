@@ -1,0 +1,58 @@
+# =============== #
+# Unity generated #
+# =============== #
+
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+UserSettings/
+
+# ===================================== #
+# OS generated files                    #
+# ===================================== #
+
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.swp
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+
+# ===================================== #
+# Visual Studio / Rider / IDE files     #
+# ===================================== #
+
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+
+# ===================================== #
+# Git LFS (Optional, large files)       #
+# ===================================== #
+
+# *.psd
+# *.tga
+# *.png
+# *.jpg
+# *.fbx
+# *.mp4

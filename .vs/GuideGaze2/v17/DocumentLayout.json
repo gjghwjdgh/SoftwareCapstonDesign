@@ -1,0 +1,120 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\User\\GuideGaze2\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|C:\\Users\\User\\GuideGaze2\\assets\\script\\pathvisualizer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\pathvisualizer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|C:\\Users\\User\\GuideGaze2\\assets\\script\\pathdrawer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\pathdrawer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|c:\\users\\user\\guidegaze2\\assets\\script\\cameracontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\cameracontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|c:\\users\\user\\guidegaze2\\assets\\script\\pathmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\pathmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|C:\\Users\\User\\GuideGaze2\\assets\\script\\gameuimanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\gameuimanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|C:\\Users\\User\\GuideGaze2\\assets\\script\\pursuitmover.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2042AC83-7E6A-A0BE-651E-D2BD6BE016B6}|Assembly-CSharp.csproj|solutionrelative:assets\\script\\pursuitmover.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "CameraController.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\CameraController.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\CameraController.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\CameraController.cs",
+              "RelativeToolTip": "Assets\\Script\\CameraController.cs",
+              "ViewState": "AgIAACIAAAAAAAAAAAAmwD0AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T17:32:22.769Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "PathDrawer.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathDrawer.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\PathDrawer.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathDrawer.cs",
+              "RelativeToolTip": "Assets\\Script\\PathDrawer.cs",
+              "ViewState": "AgIAAEUAAAAAAAAAAAAkwFAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T16:59:16.062Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "PursuitMover.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PursuitMover.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\PursuitMover.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PursuitMover.cs",
+              "RelativeToolTip": "Assets\\Script\\PursuitMover.cs",
+              "ViewState": "AgIAACcAAAAAAAAAAAAkwDgAAAAmAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T16:55:58.566Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PathVisualizer.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathVisualizer.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\PathVisualizer.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathVisualizer.cs",
+              "RelativeToolTip": "Assets\\Script\\PathVisualizer.cs",
+              "ViewState": "AgIAACYAAAAAAAAAAAAkwEEAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T16:55:54.944Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "PathManager.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathManager.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\PathManager.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\PathManager.cs",
+              "RelativeToolTip": "Assets\\Script\\PathManager.cs",
+              "ViewState": "AgIAAEMAAAAAAAAAAAAkwF4AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T16:55:54.516Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "GameUIManager.cs",
+              "DocumentMoniker": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\GameUIManager.cs",
+              "RelativeDocumentMoniker": "Assets\\Script\\GameUIManager.cs",
+              "ToolTip": "C:\\Users\\User\\GuideGaze2\\Assets\\Script\\GameUIManager.cs",
+              "RelativeToolTip": "Assets\\Script\\GameUIManager.cs",
+              "ViewState": "AgIAAA0AAAAAAAAAAAAYwEcAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T16:55:05.829Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
