@@ -2,57 +2,37 @@ using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
-    [Header("Ä«¸Ş¶ó ¼³Á¤")]
-    [Tooltip("Ä«¸Ş¶óÀÇ ÃÊ´ç ÀÌµ¿ ¼ÓµµÀÔ´Ï´Ù.")]
+    [Header("ì¹´ë©”ë¼ ì„¤ì •")]
     public float moveSpeed = 5.0f;
-    [Tooltip("¸¶¿ì½º °¨µµÀÔ´Ï´Ù.")]
     public float mouseSensitivity = 100.0f;
 
-    // ³»ºÎÀûÀ¸·Î »ç¿ëÇÒ È¸Àü°ª º¯¼ö
-    private float currentXRotation = 0f; // »óÇÏ È¸Àü (Pitch)
-    private float currentYRotation = 0f; // ÁÂ¿ì È¸Àü (Yaw)
+    // IsLocked í”„ë¡œí¼í‹° ì œê±°
+    private float currentXRotation = 0f;
+    private float currentYRotation = 0f;
 
     void Start()
     {
-        // °ÔÀÓ ½ÃÀÛ ½Ã ¸¶¿ì½º Ä¿¼­¸¦ È­¸é Áß¾Ó¿¡ °íÁ¤ÇÏ°í ¼û±é´Ï´Ù.
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
 
     void Update()
     {
-        // --- 1. È¸Àü ±â´É (¸¶¿ì½º ÀÔ·Â) ---
-        // ¸¶¿ì½ºÀÇ ÁÂ¿ì ¿òÁ÷ÀÓ(X)°ú »óÇÏ ¿òÁ÷ÀÓ(Y) °ªÀ» °¡Á®¿É´Ï´Ù.
+        // IsLocked ì²´í¬ ì œê±°
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
-        // ÁÂ¿ì È¸Àü°ª(YÃà ±âÁØ)À» ´©ÀûÇÕ´Ï´Ù.
         currentYRotation += mouseX;
-        // »óÇÏ È¸Àü°ª(XÃà ±âÁØ)À» ´©ÀûÇÕ´Ï´Ù. (¸¶¿ì½º¸¦ À§·Î ¿Ã¸®¸é È­¸éÀÌ ³»·Á°¡´Â °ÍÀ» ¹æÁöÇÏ±â À§ÇØ -= »ç¿ë)
         currentXRotation -= mouseY;
-
-        // »óÇÏ È¸Àü °¢µµ¸¦ -90µµ ~ 90µµ »çÀÌ·Î Á¦ÇÑÇÏ¿© Ä«¸Ş¶ó°¡ °Å²Ù·Î µÚÁıÈ÷´Â °ÍÀ» ¹æÁöÇÕ´Ï´Ù.
         currentXRotation = Mathf.Clamp(currentXRotation, -90f, 90f);
 
-        // °è»êµÈ È¸Àü°ªÀ» Ä«¸Ş¶ó¿¡ ½ÇÁ¦·Î Àû¿ëÇÕ´Ï´Ù.
-        // Quaternion.Euler¸¦ »ç¿ëÇÏ¸é Áü¹ú¶ô(Gimbal Lock) Çö»ó ¾øÀÌ ¾ÈÀüÇÏ°Ô È¸ÀüÇÒ ¼ö ÀÖ½À´Ï´Ù.
         transform.rotation = Quaternion.Euler(currentXRotation, currentYRotation, 0f);
 
-
-        // --- 2. ÀÌµ¿ ±â´É (Å°º¸µå ÀÔ·Â) ---
-        float horizontalInput = Input.GetAxis("Horizontal"); // A, D
-        float verticalInput = Input.GetAxis("Vertical");     // W, S
-
+        float horizontalInput = Input.GetAxis("Horizontal");
+        float verticalInput = Input.GetAxis("Vertical");
         Vector3 moveDirection = new Vector3(horizontalInput, 0f, verticalInput);
-
-        // [Áß¿ä] transform.position ´ë½Å transform.Translate¸¦ »ç¿ëÇÕ´Ï´Ù.
-        // ÀÌ·¸°Ô ÇÏ¸é ¿ùµå ÁÂÇ¥°è°¡ ¾Æ´Ñ 'Ä«¸Ş¶ó°¡ ¹Ù¶óº¸´Â ¹æÇâ'À» ±âÁØÀ¸·Î ÀÌµ¿ÇÕ´Ï´Ù.
-        // Áï, W¸¦ ´©¸£¸é Ç×»ó Ä«¸Ş¶óÀÇ '¾ÕÀ¸·Î' ÀÌµ¿ÇÕ´Ï´Ù.
         transform.Translate(moveDirection * moveSpeed * Time.deltaTime);
 
-
-        // --- 3. Ä¿¼­ Àá±İ ÇØÁ¦ ±â´É ---
-        // 'ESC' Å°¸¦ ´©¸£¸é ¸¶¿ì½º Ä¿¼­ Àá±İÀ» ÇØÁ¦ÇÕ´Ï´Ù.
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             Cursor.lockState = CursorLockMode.None;

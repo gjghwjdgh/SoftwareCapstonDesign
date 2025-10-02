@@ -3,64 +3,83 @@ using System.Collections.Generic;
 
 public class PathVisualizer : MonoBehaviour
 {
-    [Header("ÂüÁ¶ ¼³Á¤")]
-    [Tooltip("°æ·Î µ¥ÀÌÅÍ¸¦ Á¦°øÇÏ´Â PathManager")]
-    public PathManager pathManager;
-    [Tooltip("°³º° °æ·Î¸¦ ±×¸± ÇÁ¸®ÆÕ (PathDrawer.cs Æ÷ÇÔ)")]
-    public GameObject lineDrawerPrefab;
+    [Header("í•µì‹¬ ì„¤ì •")]
+    public Transform startPoint;
+    public List<Transform> targets;
+    public Transform uiCanvas;
 
-    [Header("2D Åõ¿µ ¼³Á¤")]
-    public float projectionDepth = 10.0f;
+    [Header("í”„ë¦¬íŒ¹")]
+    public GameObject lineDrawer3DPrefab;
+    public GameObject uiLinePrefab;
 
-    private List<PathDrawer> pathDrawers = new List<PathDrawer>();
-    private bool is3DMode = true;
+    private List<PathDrawer> pathDrawers3D = new List<PathDrawer>();
+    private List<UILineConnector> uiLines2D = new List<UILineConnector>();
     private Camera mainCamera;
+    
+    private bool is3DMode = true;
+    // --- â–¼ ì—¬ê¸°ê°€ ì¶”ê°€ëœ ë¶€ë¶„ì…ë‹ˆë‹¤ â–¼ ---
+    // ì™¸ë¶€ì—ì„œ í˜„ì¬ ëª¨ë“œ(is3DMode)ê°€ ë¬´ì—‡ì¸ì§€ 'ì½ì„ ìˆ˜ë§Œ' ìˆë„ë¡ ê³µê°œí•˜ëŠ” í”„ë¡œí¼í‹°(Property)ì…ë‹ˆë‹¤.
+    public bool Is3DMode => is3DMode;
+    // --- â–² ì—¬ê¸°ê°€ ì¶”ê°€ëœ ë¶€ë¶„ì…ë‹ˆë‹¤ â–² ---
 
     void Start()
     {
         mainCamera = Camera.main;
-        InstantiateAndDrawAllPaths();
     }
 
-    void InstantiateAndDrawAllPaths()
+    public void ShowAllPaths()
     {
-        int totalTargets = pathManager.targets.Count;
-        for (int i = 0; i < totalTargets; i++)
+        foreach (var line in pathDrawers3D) if(line != null) Destroy(line.gameObject);
+        foreach (var line in uiLines2D) if(line != null) Destroy(line.gameObject);
+        pathDrawers3D.Clear();
+        uiLines2D.Clear();
+
+        for (int i = 0; i < targets.Count; i++)
         {
-            GameObject drawerInstance = Instantiate(lineDrawerPrefab, transform);
-            drawerInstance.name = $"Path_To_Target_{i}";
+            GameObject drawerInstance3D = Instantiate(lineDrawer3DPrefab, transform);
+            PathDrawer drawer3D = drawerInstance3D.GetComponent<PathDrawer>();
+            drawer3D.Initialize(startPoint, targets[i]);
+            pathDrawers3D.Add(drawer3D);
 
-            PathDrawer drawer = drawerInstance.GetComponent<PathDrawer>();
-            if (drawer != null)
-            {
-                // [¼öÁ¤µÊ] PathDrawer¿¡ ´õ ¸¹Àº Á¤º¸¸¦ Àü´ŞÇÕ´Ï´Ù.
-                var pathPoints3D = pathManager.GetPathPoints(i);
-                var startPos3D = pathManager.startPoint.position;
-                var endPos3D = pathManager.targets[i].position;
-                var spreadFactor = pathManager.spreadFactor;
-                var resolution = pathManager.pathResolution;
-
-                drawer.DrawPath(pathPoints3D, startPos3D, endPos3D, i, totalTargets, spreadFactor, mainCamera, projectionDepth, resolution);
-                drawer.SetViewMode(is3DMode);
-                pathDrawers.Add(drawer);
-            }
+            GameObject uiLineInstance = Instantiate(uiLinePrefab, uiCanvas);
+            UILineConnector uiLine = uiLineInstance.GetComponent<UILineConnector>();
+            uiLine.Initialize(startPoint, targets[i], mainCamera);
+            uiLines2D.Add(uiLine);
         }
+        UpdateViewMode();
     }
-
+    
+    public Transform GetTargetTransform(int index)
+    {
+        if (index < 0 || index >= targets.Count) return null;
+        return targets[index];
+    }
+    
     public void SwitchViewMode()
     {
         is3DMode = !is3DMode;
-        foreach (var drawer in pathDrawers)
-        {
-            drawer.SetViewMode(is3DMode);
-        }
+        UpdateViewMode();
+    }
+
+    void UpdateViewMode()
+    {
+        foreach (var line in pathDrawers3D) line.gameObject.SetActive(is3DMode);
+        foreach (var line in uiLines2D) line.gameObject.SetActive(!is3DMode);
     }
 
     public void HighlightPath(int targetIndex)
     {
-        for (int i = 0; i < pathDrawers.Count; i++)
+        for (int i = 0; i < targets.Count; i++)
         {
-            pathDrawers[i].SetHighlight(i == targetIndex);
+            bool isHighlighted = (i == targetIndex);
+            if(i < pathDrawers3D.Count && pathDrawers3D[i] != null) pathDrawers3D[i].SetHighlight(isHighlighted);
+            if(i < uiLines2D.Count && uiLines2D[i] != null) uiLines2D[i].SetHighlight(isHighlighted);
         }
+    }
+
+    public UILineConnector GetUILine(int index)
+    {
+        if (index < 0 || index >= uiLines2D.Count) return null;
+        return uiLines2D[index];
     }
 }

@@ -4,26 +4,17 @@ using System.Collections.Generic;
 
 public class PursuitMover : MonoBehaviour
 {
-    [Header("ø¿∫Í¡ß∆Æ º≥¡§")]
+    [Header("Ïò§Î∏åÏ†ùÌä∏ ÏÑ§Ï†ï")]
     public GameObject helperPrefab;
-
+    
     private GameObject currentHelperInstance;
     private Coroutine movementCoroutine;
 
-    /// <summary>
-    /// ¡÷æÓ¡¯ ∞Ê∑Œ∏¶ µ˚∂Û ¡§«ÿ¡¯ Ω√∞£ µøæ» µµøÏπÃ ∞¥√º∏¶ ¿ÃµøΩ√≈µ¥œ¥Ÿ.
-    /// </summary>
+    // System.Action onComplete ÏΩúÎ∞± Ï†úÍ±∞
     public void StartMovement(List<Vector3> path, float duration)
     {
-        if (movementCoroutine != null)
-        {
-            StopCoroutine(movementCoroutine);
-        }
-
-        if (currentHelperInstance != null)
-        {
-            Destroy(currentHelperInstance);
-        }
+        if (movementCoroutine != null) StopCoroutine(movementCoroutine);
+        if (currentHelperInstance != null) Destroy(currentHelperInstance);
 
         currentHelperInstance = Instantiate(helperPrefab, path[0], Quaternion.identity);
         movementCoroutine = StartCoroutine(MoveAlongPath(path, duration));
@@ -32,36 +23,21 @@ public class PursuitMover : MonoBehaviour
     private IEnumerator MoveAlongPath(List<Vector3> path, float duration)
     {
         float elapsedTime = 0f;
-
+        Vector3 startPos = path[0];
+        Vector3 endPos = path[path.Count - 1];
+        
         while (elapsedTime < duration)
         {
-            // Ω√∞£ø° µ˚∏• ¡¯«‡∑¸(0.0 ~ 1.0) ∞ËªÍ
             float progress = elapsedTime / duration;
-            // ¡¯«‡∑¸ø° ∏¬¥¬ ∞Ê∑ŒªÛ¿« ¿Œµ¶Ω∫ ∞ËªÍ
-            int currentIndex = Mathf.FloorToInt(progress * (path.Count - 1));
-
-            currentHelperInstance.transform.position = path[currentIndex];
-
+            currentHelperInstance.transform.position = Vector3.Lerp(startPos, endPos, progress);
             elapsedTime += Time.deltaTime;
             yield return null;
         }
-
-        // ¿Ãµø øœ∑· »ƒ ¡§»Æ«— √÷¡æ ¿ßƒ°∑Œ º≥¡§ π◊ ∞¥√º ∆ƒ±´
-        currentHelperInstance.transform.position = path[path.Count - 1];
-        yield return new WaitForSeconds(1.0f); // 1√  »ƒ ¿⁄µø ∆ƒ±´
+        
+        currentHelperInstance.transform.position = endPos;
+        yield return new WaitForSeconds(1.0f);
         Destroy(currentHelperInstance);
-    }
-
-    public void StopAndClear()
-    {
-        if (movementCoroutine != null)
-        {
-            StopCoroutine(movementCoroutine);
-            movementCoroutine = null;
-        }
-        if (currentHelperInstance != null)
-        {
-            Destroy(currentHelperInstance);
-        }
+        
+        // onComplete Ìò∏Ï∂ú Ï†úÍ±∞
     }
 }

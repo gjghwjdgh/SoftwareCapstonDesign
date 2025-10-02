@@ -1,70 +1,50 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class GameUIManager : MonoBehaviour
 {
-    [Header("°ü¸®ÀÚ ½ºÅ©¸³Æ® ¿¬°á")]
-    public PathManager pathManager;
+    [Header("ê´€ë¦¬ì ìŠ¤í¬ë¦½íŠ¸ ì—°ê²°")]
     public PathVisualizer pathVisualizer;
-    public PursuitMover pursuitMover;
+    public PursuitMover pursuitMover3D;
+    // UIPursuitMover ì°¸ì¡° ì‚­ì œ
 
-    [Header("¼³Á¤")]
+    [Header("ì„¤ì •")]
     public float travelDuration = 2.0f;
 
-    // --- Ãß°¡µÈ ºÎºĞ: Å°º¸µå ÀÔ·ÂÀ» ¸Å ÇÁ·¹ÀÓ °¨Áö ---
     void Update()
     {
-        // --- ÆÛ½´Æ® ½ÃÀÛ Å° (¼ıÀÚ 1, 2, 3, 4) ---
-        if (Input.GetKeyDown(KeyCode.Alpha1))
-        {
-            OnStartPursuitClicked(0); // Ã¹ ¹øÂ° Å¸°Ù (ÀÎµ¦½º 0)
-        }
-        if (Input.GetKeyDown(KeyCode.Alpha2))
-        {
-            OnStartPursuitClicked(1); // µÎ ¹øÂ° Å¸°Ù (ÀÎµ¦½º 1)
-        }
-        if (Input.GetKeyDown(KeyCode.Alpha3))
-        {
-            OnStartPursuitClicked(2); // ¼¼ ¹øÂ° Å¸°Ù (ÀÎµ¦½º 2)
-        }
-        if (Input.GetKeyDown(KeyCode.Alpha4))
-        {
-            OnStartPursuitClicked(3); // ³× ¹øÂ° Å¸°Ù (ÀÎµ¦½º 3)
-        }
-
-        // --- ºä ÀüÈ¯ Å° (Tab) ---
-        if (Input.GetKeyDown(KeyCode.Tab))
-        {
-            OnSwitchViewClicked();
-        }
+        if (Input.GetKeyDown(KeyCode.Alpha1)) OnStartPursuitClicked(0);
+        if (Input.GetKeyDown(KeyCode.Alpha2)) OnStartPursuitClicked(1);
+        if (Input.GetKeyDown(KeyCode.Alpha3)) OnStartPursuitClicked(2);
+        if (Input.GetKeyDown(KeyCode.Alpha4)) OnStartPursuitClicked(3);
+        
+        if (Input.GetKeyDown(KeyCode.Tab)) OnSwitchViewClicked();
     }
-    // --- ¿©±â±îÁö Ãß°¡ ---
-
-    /// <summary>
-    /// ÆÛ½´Æ® ½ÃÀÛ ¹öÆ° Å¬¸¯ ½Ã È£ÃâµÉ ÇÔ¼ö (UI ¹öÆ° ¶Ç´Â Å°º¸µå·Î È£Ãâ)
-    /// </summary>
+    
     public void OnStartPursuitClicked(int targetIndex)
     {
-        // PathManager¿¡ Å¸°Ù °³¼öº¸´Ù Å« ÀÎµ¦½º°¡ ¿äÃ»µÉ °æ¿ì¸¦ ¹æÁö
-        if (targetIndex >= pathManager.targets.Count)
-        {
-            Debug.LogWarning($"Å¸°Ù ÀÎµ¦½º {targetIndex}°¡ Á¸ÀçÇÏÁö ¾Ê½À´Ï´Ù.");
-            return;
-        }
+        Transform target = pathVisualizer.GetTargetTransform(targetIndex);
+        if (target == null) return;
 
-        // 1. PathManager¿¡°Ô °æ·Î µ¥ÀÌÅÍ ¿äÃ»
-        var pathPoints = pathManager.GetPathPoints(targetIndex);
-        if (pathPoints == null) return;
-
-        // 2. PathVisualizer¿¡°Ô ÇØ´ç °æ·Î¸¦ ÇÏÀÌ¶óÀÌÆ®ÇÏµµ·Ï Áö½Ã
         pathVisualizer.HighlightPath(targetIndex);
 
-        // 3. PursuitMover¿¡°Ô »õ °æ·Î·Î ÀÌµ¿À» ½ÃÀÛÇÏ¶ó°í Áö½Ã
-        pursuitMover.StartMovement(pathPoints, travelDuration);
+        if (pathVisualizer.Is3DMode)
+        {
+            List<Vector3> pathPoints = new List<Vector3> { pathVisualizer.startPoint.position, target.position };
+            pursuitMover3D.StartMovement(pathPoints, travelDuration);
+        }
+        else // 2D ëª¨ë“œì¼ ë•Œ
+        {
+            // PathVisualizerì—ê²Œ targetIndexì— í•´ë‹¹í•˜ëŠ” 2D ë¼ì¸(UILineConnector)ì„ ë¬¼ì–´ë´„
+            UILineConnector lineToFollow = pathVisualizer.GetUILine(targetIndex);
+            if (lineToFollow != null)
+            {
+                // UILineConnectorì—ê²Œ ì§ì ‘ í¼ìŠˆíŠ¸ ì‹œì‘ì„ ëª…ë ¹
+                lineToFollow.StartPursuit(travelDuration);
+            }
+        }
     }
-
-    /// <summary>
-    /// ºä ¸ğµå ÀüÈ¯ ¹öÆ° Å¬¸¯ ½Ã È£ÃâµÉ ÇÔ¼ö (UI ¹öÆ° ¶Ç´Â Å°º¸µå·Î È£Ãâ)
-    /// </summary>
+    
     public void OnSwitchViewClicked()
     {
         pathVisualizer.SwitchViewMode();

@@ -1,97 +1,42 @@
 using UnityEngine;
-using System.Collections.Generic;
 
 public class PathDrawer : MonoBehaviour
 {
-    [Header("¶óÀÎ ·»´õ·¯")]
     public LineRenderer lineRenderer3D;
-    public LineRenderer lineRenderer2D;
-
-    [Header("»óÅÂº° »ö»ó")]
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
 
-    private int pathResolution = 100;
+    private Transform startPoint;
+    private Transform target;
 
-    /// <summary>
-    /// [¼öÁ¤µÊ] °æ·Î¸¦ ±×¸®±â À§ÇØ ´õ ¸¹Àº Á¤º¸¸¦ ¹Ş½À´Ï´Ù.
-    /// </summary>
-    public void DrawPath(List<Vector3> pathPoints3D, Vector3 startPos3D, Vector3 endPos3D, int targetIndex, int totalTargets, float spreadFactor, Camera cam, float projectionDepth, int resolution)
+    public void Initialize(Transform start, Transform target)
     {
-        this.pathResolution = resolution;
-
-        // 1. 3D ¶óÀÎÀº ÀÌÀü°ú µ¿ÀÏÇÏ°Ô 3D °æ·Î µ¥ÀÌÅÍ·Î ±×¸³´Ï´Ù.
-        lineRenderer3D.positionCount = pathPoints3D.Count;
-        lineRenderer3D.SetPositions(pathPoints3D.ToArray());
-
-        // 2. 2D ¶óÀÎÀº 3D °æ·Î¿Í º°°³·Î, È­¸é ±âÁØÀ¸·Î »õ·Î °è»êÇÏ¿© ±×¸³´Ï´Ù.
-        DrawStable2DLine(startPos3D, endPos3D, targetIndex, totalTargets, spreadFactor, cam, projectionDepth);
-
+        this.startPoint = start;
+        this.target = target;
+        lineRenderer3D.positionCount = 2;
+        lineRenderer3D.widthMultiplier = 0.05f;
         SetHighlight(false);
     }
 
-    /// <summary>
-    /// [»õ·Î Ãß°¡µÊ] È­¸é ±âÁØÀ¸·Î ¾ÈÁ¤ÀûÀÎ 2D º£Áö¾î °î¼±À» °è»êÇÏ°í ±×¸³´Ï´Ù.
-    /// </summary>
-    private void DrawStable2DLine(Vector3 startPos3D, Vector3 endPos3D, int targetIndex, int totalTargets, float spreadFactor, Camera cam, float projectionDepth)
+    void Update()
     {
-        // 3D ½ÃÀÛÁ¡°ú ³¡Á¡À» 2D È­¸é ÁÂÇ¥·Î º¯È¯ÇÕ´Ï´Ù.
-        Vector2 p0 = cam.WorldToScreenPoint(startPos3D);
-        Vector2 p3 = cam.WorldToScreenPoint(endPos3D);
-
-        // 2D È­¸é ÁÂÇ¥°è¿¡¼­ ¹æÇâ°ú ¼öÁ÷ º¤ÅÍ¸¦ °è»êÇÕ´Ï´Ù.
-        Vector2 directionVector = p3 - p0;
-        Vector2 sideVector = new Vector2(-directionVector.y, directionVector.x).normalized;
-
-        // È­¸é ±âÁØÀ¸·Î °æ·Î ºĞ»ê ¿ÀÇÁ¼ÂÀ» °è»êÇÕ´Ï´Ù. (½ºÇÁ·¹µå ÆÑÅÍ´Â È­¸é Å©±â¿¡ µû¶ó Á¶Á¤ÀÌ ÇÊ¿äÇÒ ¼ö ÀÖÀ¸¹Ç·Î 50 Á¤µµ·Î ³ª´®)
-        float distributionOffset = (targetIndex - (totalTargets - 1) / 2.0f) * (spreadFactor * 50f);
-        Vector2 offset = sideVector * distributionOffset;
-
-        // 2D È­¸é ÁÂÇ¥°è¿¡¼­ Á¦¾îÁ¡À» °è»êÇÕ´Ï´Ù.
-        Vector2 p1 = p0 + (directionVector * 0.25f) + offset;
-        Vector2 p2 = p3 - (directionVector * 0.25f) + offset;
-
-        // °è»êµÈ 2D °î¼±ÀÇ Á¡µéÀ» »ı¼ºÇÕ´Ï´Ù.
-        Vector3[] projectedPoints = new Vector3[pathResolution + 1];
-        for (int i = 0; i <= pathResolution; i++)
+        if (startPoint != null && target != null)
         {
-            float t = i / (float)pathResolution;
-            Vector2 screenPoint2D = CalculateCubicBezierPoint(t, p0, p1, p2, p3);
+            // íƒ€ê²Ÿì´ ë³´ì¼ ë•Œë§Œ ì„ ì„ ê·¸ë¦¼ (2Dì™€ ë™ì¼í•œ ì¡°ê±´ ì ìš©)
+            Vector3 viewportPoint = Camera.main.WorldToViewportPoint(target.position);
+            bool isTargetVisible = viewportPoint.z > 0 && viewportPoint.x > 0 && viewportPoint.x < 1 && viewportPoint.y > 0 && viewportPoint.y < 1;
+            lineRenderer3D.enabled = isTargetVisible;
 
-            // ÃÖÁ¾ÀûÀ¸·Î 2D È­¸é ÁÂÇ¥¸¦ ´Ù½Ã 3D ¿ùµå ÁÂÇ¥(Ä«¸Ş¶ó ¾Õ)·Î º¯È¯ÇÏ¿© ÀúÀåÇÕ´Ï´Ù.
-            projectedPoints[i] = cam.ScreenToWorldPoint(new Vector3(screenPoint2D.x, screenPoint2D.y, projectionDepth));
+            if(isTargetVisible)
+            {
+                lineRenderer3D.SetPosition(0, startPoint.position);
+                lineRenderer3D.SetPosition(1, target.position);
+            }
         }
-
-        lineRenderer2D.positionCount = projectedPoints.Length;
-        lineRenderer2D.SetPositions(projectedPoints);
-    }
-
-    public void SetViewMode(bool is3D)
-    {
-        lineRenderer3D.gameObject.SetActive(is3D);
-        lineRenderer2D.gameObject.SetActive(!is3D);
     }
 
     public void SetHighlight(bool highlighted)
     {
-        Color color = highlighted ? highlightColor : normalColor;
-        lineRenderer3D.startColor = lineRenderer3D.endColor = color;
-        lineRenderer2D.startColor = lineRenderer2D.endColor = color;
-    }
-
-    // 2D Vector2¿ë º£Áö¾î °è»ê ÇÔ¼ö
-    private Vector2 CalculateCubicBezierPoint(float t, Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3)
-    {
-        float u = 1 - t;
-        float tt = t * t;
-        float uu = u * u;
-        float uuu = uu * u;
-        float ttt = tt * t;
-
-        Vector2 p = uuu * p0;
-        p += 3 * uu * t * p1;
-        p += 3 * u * tt * p2;
-        p += ttt * p3;
-        return p;
+        lineRenderer3D.startColor = lineRenderer3D.endColor = highlighted ? highlightColor : normalColor;
     }
 }
