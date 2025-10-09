@@ -50,8 +50,8 @@ public class GameUIManager : MonoBehaviour
             
             // 5. 콘솔에 최종 결과 출력
             Debug.Log($"--- 분석 결과 (타겟 {targetIndex}) ---");
-            Debug.Log($"프레셰 거리 (모양): {frechetDist}"); // 낮을수록 좋음
-            Debug.Log($"속도 유사도 (리듬): {velocitySim}"); // 1에 가까울수록 좋음
+            Debug.Log($"프레셰 거리: {frechetDist}"); // 낮을수록 좋음
+            Debug.Log($"속도 유사도: {velocitySim}"); // 1에 가까울수록 좋음
             Debug.Log("------------------------------------");
         };
         
