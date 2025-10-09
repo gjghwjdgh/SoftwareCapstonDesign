@@ -1,66 +1,48 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System.Collections.Generic;
 
 public class UIPursuitMover : MonoBehaviour
 {
-    [Header("UI 도우미 설정")]
     public Image helperPrefab;
     public Transform canvasTransform;
-
     private Image currentHelperInstance;
-    // --- ▼ 여기가 추가된 부분입니다 (1/2) ▼ ---
-    // 현재 실행 중인 이동 명령(코루틴)을 저장할 변수
     private Coroutine movementCoroutine;
-    // --- ▲ 여기가 추가된 부분입니다 (1/2) ▲ ---
 
-    public void StartMovement(Transform startPoint, Transform targetPoint, float duration)
+    public void StartMovement(UILineConnector lineToFollow, float duration, System.Action<List<Vector2>, List<float>> onComplete)
     {
-        // --- ▼ 여기가 추가된 부분입니다 (2/2) ▼ ---
-        // 만약 이전에 실행 중이던 이동 명령이 있다면, 확실하게 중지시킵니다.
-        if (movementCoroutine != null)
-        {
-            StopCoroutine(movementCoroutine);
-        }
-        // --- ▲ 여기가 추가된 부분입니다 (2/2) ▲ ---
+        if (movementCoroutine != null) StopCoroutine(movementCoroutine);
 
-        if (currentHelperInstance != null)
-        {
-            Destroy(currentHelperInstance.gameObject);
-        }
+        // --- ▼ 여기가 추가된 부분입니다 ▼ ---
+        // 만약 이전에 움직이던 UI 도우미가 남아있다면, 확실하게 파괴합니다.
+        if (currentHelperInstance != null) Destroy(currentHelperInstance.gameObject);
+        // --- ▲ 여기가 추가된 부분입니다 ▲ ---
 
         currentHelperInstance = Instantiate(helperPrefab, canvasTransform);
-        // 새로운 이동 명령을 시작하고, 그 명령을 변수에 저장합니다.
-        movementCoroutine = StartCoroutine(MoveOnScreen(startPoint, targetPoint, duration));
+        movementCoroutine = StartCoroutine(MoveOnScreen(currentHelperInstance, lineToFollow, duration, onComplete));
     }
 
-    private IEnumerator MoveOnScreen(Transform startPoint, Transform targetPoint, float duration)
+    private IEnumerator MoveOnScreen(Image helper, UILineConnector lineToFollow, float duration, System.Action<List<Vector2>, List<float>> onComplete)
     {
+        // ... (내부 코드는 이전과 동일)
+        List<Vector2> targetScreenPath = new List<Vector2>();
+        List<float> targetTimestamps = new List<float>();
         float elapsedTime = 0f;
-        Camera mainCamera = Camera.main;
-
         while (elapsedTime < duration)
         {
-            // currentHelperInstance가 외부에서 파괴되었을 경우를 대비한 안전장치
-            if (currentHelperInstance == null)
-            {
-                yield break; // 코루틴 즉시 종료
-            }
-
-            Vector2 startScreenPos = mainCamera.WorldToScreenPoint(startPoint.position);
-            Vector2 targetScreenPos = mainCamera.WorldToScreenPoint(targetPoint.position);
-
+            if (helper == null || lineToFollow == null) { onComplete?.Invoke(null, null); yield break; }
+            Vector2 startScreenPos = Camera.main.WorldToScreenPoint(lineToFollow.StartPoint3D.position);
+            Vector2 targetScreenPos = Camera.main.WorldToScreenPoint(lineToFollow.Target3D.position);
             float progress = elapsedTime / duration;
-            
-            currentHelperInstance.rectTransform.position = Vector2.Lerp(startScreenPos, targetScreenPos, progress);
-
+            Vector2 currentPos = Vector2.Lerp(startScreenPos, targetScreenPos, progress);
+            helper.rectTransform.position = currentPos;
+            targetScreenPath.Add(currentPos);
+            targetTimestamps.Add(Time.time);
             elapsedTime += Time.deltaTime;
             yield return null;
         }
-
-        if (currentHelperInstance != null)
-        {
-            Destroy(currentHelperInstance.gameObject);
-        }
+        if (helper != null) Destroy(helper.gameObject);
+        onComplete?.Invoke(targetScreenPath, targetTimestamps);
     }
 }

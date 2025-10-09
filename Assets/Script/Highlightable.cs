@@ -9,14 +9,11 @@ public class Highlightable : MonoBehaviour
     void Start()
     {
         objectRenderer = GetComponent<Renderer>();
-        originalColor = objectRenderer.material.color;
+        if(objectRenderer != null) originalColor = objectRenderer.material.color;
     }
 
     public void ToggleHighlight(bool state)
     {
-        if(objectRenderer != null)
-        {
-            objectRenderer.material.color = state ? highlightColor : originalColor;
-        }
+        if(objectRenderer != null) objectRenderer.material.color = state ? highlightColor : originalColor;
     }
 }
