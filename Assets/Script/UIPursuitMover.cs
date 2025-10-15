@@ -1,48 +1,25 @@
 using UnityEngine;
 using UnityEngine.UI;
-using System.Collections;
 using System.Collections.Generic;
 
 public class UIPursuitMover : MonoBehaviour
 {
-    public Image helperPrefab;
+    public Image helperPrefab; // ObjectMover2D.cs가 붙어있는 프리팹
     public Transform canvasTransform;
-    private Image currentHelperInstance;
-    private Coroutine movementCoroutine;
 
+    // UI 도우미 객체를 생성하고, 이동 코루틴을 시작시킨 후 아무것도 하지 않음
     public void StartMovement(UILineConnector lineToFollow, float duration, System.Action<List<Vector2>, List<float>> onComplete)
     {
-        if (movementCoroutine != null) StopCoroutine(movementCoroutine);
-
-        // --- ▼ 여기가 추가된 부분입니다 ▼ ---
-        // 만약 이전에 움직이던 UI 도우미가 남아있다면, 확실하게 파괴합니다.
-        if (currentHelperInstance != null) Destroy(currentHelperInstance.gameObject);
-        // --- ▲ 여기가 추가된 부분입니다 ▲ ---
-
-        currentHelperInstance = Instantiate(helperPrefab, canvasTransform);
-        movementCoroutine = StartCoroutine(MoveOnScreen(currentHelperInstance, lineToFollow, duration, onComplete));
-    }
-
-    private IEnumerator MoveOnScreen(Image helper, UILineConnector lineToFollow, float duration, System.Action<List<Vector2>, List<float>> onComplete)
-    {
-        // ... (내부 코드는 이전과 동일)
-        List<Vector2> targetScreenPath = new List<Vector2>();
-        List<float> targetTimestamps = new List<float>();
-        float elapsedTime = 0f;
-        while (elapsedTime < duration)
+        Image helperInstance = Instantiate(helperPrefab, canvasTransform);
+        ObjectMover2D mover = helperInstance.GetComponent<ObjectMover2D>();
+        if (mover != null)
         {
-            if (helper == null || lineToFollow == null) { onComplete?.Invoke(null, null); yield break; }
-            Vector2 startScreenPos = Camera.main.WorldToScreenPoint(lineToFollow.StartPoint3D.position);
-            Vector2 targetScreenPos = Camera.main.WorldToScreenPoint(lineToFollow.Target3D.position);
-            float progress = elapsedTime / duration;
-            Vector2 currentPos = Vector2.Lerp(startScreenPos, targetScreenPos, progress);
-            helper.rectTransform.position = currentPos;
-            targetScreenPath.Add(currentPos);
-            targetTimestamps.Add(Time.time);
-            elapsedTime += Time.deltaTime;
-            yield return null;
+            StartCoroutine(mover.MoveOnScreen(lineToFollow, duration, onComplete));
         }
-        if (helper != null) Destroy(helper.gameObject);
-        onComplete?.Invoke(targetScreenPath, targetTimestamps);
+        else
+        {
+            Debug.LogError("UI Helper Prefab에 ObjectMover2D 스크립트가 없습니다!");
+            Destroy(helperInstance.gameObject);
+        }
     }
 }

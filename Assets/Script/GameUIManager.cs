@@ -1,5 +1,7 @@
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 public class GameUIManager : MonoBehaviour
 {
@@ -7,72 +9,124 @@ public class GameUIManager : MonoBehaviour
     public PathVisualizer pathVisualizer;
     public PursuitMover pursuitMover3D;
     public UIPursuitMover pursuitMover2D;
-    public GazeRecorder gazeRecorder; // GazeRecorder 참조 추가
+    public GazeRecorder gazeRecorder;
 
     [Header("설정")]
     public float travelDuration = 2.0f;
 
+    private Coroutine analysisCoroutine;
+
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Alpha1)) OnStartPursuitClicked(0);
-        if (Input.GetKeyDown(KeyCode.Alpha2)) OnStartPursuitClicked(1);
-        if (Input.GetKeyDown(KeyCode.Alpha3)) OnStartPursuitClicked(2);
-        if (Input.GetKeyDown(KeyCode.Alpha4)) OnStartPursuitClicked(3);
-        
-        if (Input.GetKeyDown(KeyCode.Tab)) OnSwitchViewClicked();
-    }
-    
-    public void OnStartPursuitClicked(int targetIndex)
-    {
-        Debug.Log(targetIndex + 1 + "번 키 입력 감지됨!");
-        
-        Transform target = pathVisualizer.GetTargetTransform(targetIndex);
-            if (target == null)
-            {
-                // 찾지 못했을 경우 빨간색 오류 메시지를 띄움
-                Debug.LogError("오류: 타겟 " + (targetIndex + 1) + "을(를) 찾을 수 없습니다! PathVisualizer의 Targets 리스트 Size와 할당 상태를 다시 확인하세요."); // <-- 추가 2
-                return;
-            }
-        pathVisualizer.HighlightPath(targetIndex);
-        
-        // 1. 시선 기록 시작
-        gazeRecorder.StartRecording();
-
-        // 2. 퍼슈트가 완료되었을 때 실행될 행동(분석 및 결과 출력)을 정의
-        System.Action<List<Vector2>, List<float>> onPursuitComplete = (targetPath, targetTimes) =>
+        // '1' 키를 누르면 모든 타겟에 대한 동시 추적 및 분석 시작
+        if (Input.GetKeyDown(KeyCode.Alpha1))
         {
-            // 3. 시선 기록 중지 및 사용자 경로 데이터 가져오기
-            var (userPath, userTimes) = gazeRecorder.StopRecording();
+            if (analysisCoroutine != null)
+            {
+                StopCoroutine(analysisCoroutine);
+            }
+            analysisCoroutine = StartCoroutine(RunAllPursuitsAndAnalyze());
+        }
 
-            // 4. GestureAnalyser로 분석 실행
+        // 'Tab' 키로 3D/2D 뷰 전환
+        if (Input.GetKeyDown(KeyCode.Tab))
+        {
+            OnSwitchViewClicked();
+        }
+    }
+
+    /// <summary>
+    /// 모든 타겟의 움직임을 동시에 시작하고, 끝난 후 사용자의 시선 경로와 비교 분석합니다.
+    /// </summary>
+    private IEnumerator RunAllPursuitsAndAnalyze()
+    {
+        int targetCount = pathVisualizer.targets.Count;
+        if (targetCount == 0)
+        {
+            Debug.LogWarning("분석할 타겟이 설정되지 않았습니다.");
+            yield break;
+        }
+
+        // 각 타겟의 실제 이동 경로를 저장할 리스트
+        var targetPaths = new List<(List<Vector2> path, List<float> times)>(new (List<Vector2>, List<float>)[targetCount]);
+        int finishedCount = 0;
+
+        // 시선 기록 시작
+        gazeRecorder.StartRecording();
+        pathVisualizer.HighlightPath(-1); // 모든 하이라이트 초기화
+
+        // 모든 타겟에 대해 움직임 시작
+        for (int i = 0; i < targetCount; i++)
+        {
+            int targetIndex = i; // 클로저를 위한 인덱스 복사
+
+            // 추적이 완료되면 호출될 콜백 함수
+            System.Action<List<Vector2>, List<float>> onPursuitComplete = (targetPath, targetTimes) =>
+            {
+                if (targetPath != null)
+                {
+                    targetPaths[targetIndex] = (targetPath, targetTimes);
+                }
+                finishedCount++;
+            };
+
+            // 현재 뷰 모드에 맞춰 추적 시작
+            if (pathVisualizer.Is3DMode)
+            {
+                Transform target = pathVisualizer.GetTargetTransform(targetIndex);
+                if (target != null)
+                {
+                    List<Vector3> pathPoints = new List<Vector3> { pathVisualizer.startPoint.position, target.position };
+                    pursuitMover3D.StartMovement(pathPoints, travelDuration, onPursuitComplete);
+                }
+            }
+            else
+            {
+                UILineConnector lineToFollow = pathVisualizer.GetUILine(targetIndex);
+                if (lineToFollow != null)
+                {
+                    pursuitMover2D.StartMovement(lineToFollow, travelDuration, onPursuitComplete);
+                }
+            }
+        }
+
+        // 모든 타겟의 움직임이 끝날 때까지 대기
+        yield return new WaitUntil(() => finishedCount == targetCount);
+
+        // 시선 기록 중지 및 데이터 가져오기
+        var (userPath, userTimes) = gazeRecorder.StopRecording();
+
+        // --- 분석 결과 출력 ---
+        Debug.Log($"--- 동시 추적 분석 결과 (뷰 모드: {(pathVisualizer.Is3DMode ? "3D" : "2D")}) ---");
+
+        var results = new List<(int index, float frechet, float velocity)>();
+        for (int i = 0; i < targetCount; i++)
+        {
+            var (targetPath, targetTimes) = targetPaths[i];
+            if (targetPath == null || targetPath.Count == 0) continue;
+
             float frechetDist = GestureAnalyser.CalculateFrechetDistance(userPath, targetPath);
             float velocitySim = GestureAnalyser.CalculateVelocitySimilarity(userPath, userTimes, targetPath, targetTimes);
-            
-            // 5. 콘솔에 최종 결과 출력
-            Debug.Log($"--- 분석 결과 (타겟 {targetIndex}) ---");
-            Debug.Log($"프레셰 거리: {frechetDist}"); // 낮을수록 좋음
-            Debug.Log($"속도 유사도: {velocitySim}"); // 1에 가까울수록 좋음
-            Debug.Log("------------------------------------");
-        };
-        
-        // 6. 현재 모드에 맞는 Mover를 실행하고, 완료 시 실행될 행동(onPursuitComplete)을 전달
-        if (pathVisualizer.Is3DMode)
-        {
-            List<Vector3> pathPoints = new List<Vector3> { pathVisualizer.startPoint.position, target.position };
-            pursuitMover3D.StartMovement(pathPoints, travelDuration, onPursuitComplete);
+            results.Add((i, frechetDist, velocitySim));
+
+            Debug.Log($"[타겟 {i + 1}] 프레셰 거리(유사도): {frechetDist:F2} / 속도 유사도(리듬): {velocitySim:F2}");
         }
-        else // 2D 모드일 때
+
+        // 가장 잘 따라간 타겟 찾기 (프레셰 거리가 가장 작은 값)
+        if (results.Any())
         {
-            UILineConnector lineToFollow = pathVisualizer.GetUILine(targetIndex);
-            if (lineToFollow != null)
-            {
-                pursuitMover2D.StartMovement(lineToFollow, travelDuration, onPursuitComplete);
-            }
+            var bestMatch = results.OrderBy(r => r.frechet).First();
+            Debug.Log($"<결론> 사용자는 '타겟 {bestMatch.index + 1}'의 경로를 가장 유사하게 따라갔습니다.");
+            pathVisualizer.HighlightPath(bestMatch.index); // 가장 유사한 경로 하이라이트
         }
+
+        Debug.Log("--------------------------------------------------");
+        analysisCoroutine = null;
     }
-    
+
     public void OnSwitchViewClicked()
     {
         pathVisualizer.SwitchViewMode();
+        Debug.Log($"뷰 모드가 {(pathVisualizer.Is3DMode ? "3D" : "2D")}(으)로 전환되었습니다.");
     }
 }
