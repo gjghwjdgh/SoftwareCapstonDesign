@@ -70,6 +70,7 @@
     <Compile Include="Assets\Script\GameUIManager.cs" />
     <Compile Include="Assets\Script\ObjectMover\ObjectMover3D.cs" />
     <Compile Include="Assets\Script\PursuitMover.cs" />
+    <Compile Include="Assets\Script\Camera\PlayerController.cs" />
     <Compile Include="Assets\Script\Highlightable.cs" />
     <Compile Include="Assets\Script\UIPursuitMover.cs" />
     <Compile Include="Assets\Script\Camera\UserGazeDrawer.cs" />
