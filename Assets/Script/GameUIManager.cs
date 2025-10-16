@@ -9,124 +9,136 @@ public class GameUIManager : MonoBehaviour
     public PathVisualizer pathVisualizer;
     public PursuitMover pursuitMover3D;
     public UIPursuitMover pursuitMover2D;
-    public GazeRecorder gazeRecorder;
 
     [Header("설정")]
-    public float travelDuration = 2.0f;
+    public float travelDuration = 3.0f;
+
+    [Header("입력 판별 설정")]
+    [Tooltip("형태 유사도 가중치 (0~1)")]
+    [Range(0f, 1f)]
+    public float shapeWeight = 0.8f;
+
+    [Tooltip("속도 유사도 가중치 (0~1)")]
+    [Range(0f, 1f)]
+    public float velocityWeight = 0.2f;
+
+    [Tooltip("사람의 지각 특성을 반영한 속도 보정 계수")]
+    [Range(0f, 1f)]
+    public float perceptionCoefficient = 0.8f;
 
     private Coroutine analysisCoroutine;
 
     void Update()
     {
-        // '1' 키를 누르면 모든 타겟에 대한 동시 추적 및 분석 시작
+        if (Input.GetKeyDown(KeyCode.Tab)) pathVisualizer.SwitchViewMode();
+
+        // --- 변경점 1: 시작 트리거를 '1'번 키로 변경 ---
         if (Input.GetKeyDown(KeyCode.Alpha1))
         {
-            if (analysisCoroutine != null)
-            {
-                StopCoroutine(analysisCoroutine);
-            }
-            analysisCoroutine = StartCoroutine(RunAllPursuitsAndAnalyze());
-        }
-
-        // 'Tab' 키로 3D/2D 뷰 전환
-        if (Input.GetKeyDown(KeyCode.Tab))
-        {
-            OnSwitchViewClicked();
+            if (analysisCoroutine != null) StopCoroutine(analysisCoroutine);
+            analysisCoroutine = StartCoroutine(RunAllPursuitsAndDrawAndAnalyze());
         }
     }
 
-    /// <summary>
-    /// 모든 타겟의 움직임을 동시에 시작하고, 끝난 후 사용자의 시선 경로와 비교 분석합니다.
-    /// </summary>
-    private IEnumerator RunAllPursuitsAndAnalyze()
+    private IEnumerator RunAllPursuitsAndDrawAndAnalyze()
     {
+        pathVisualizer.HighlightPath(-1);
+
         int targetCount = pathVisualizer.targets.Count;
-        if (targetCount == 0)
-        {
-            Debug.LogWarning("분석할 타겟이 설정되지 않았습니다.");
-            yield break;
-        }
-
-        // 각 타겟의 실제 이동 경로를 저장할 리스트
-        var targetPaths = new List<(List<Vector2> path, List<float> times)>(new (List<Vector2>, List<float>)[targetCount]);
+        var targetData = new List<(List<Vector2> path, List<float> times)>(new (List<Vector2>, List<float>)[targetCount]);
         int finishedCount = 0;
+        List<Vector2> userDrawnPath = new List<Vector2>();
+        List<float> userDrawnTimes = new List<float>();
 
-        // 시선 기록 시작
-        gazeRecorder.StartRecording();
-        pathVisualizer.HighlightPath(-1); // 모든 하이라이트 초기화
+        System.Action<int, List<Vector2>, List<float>> onPursuitComplete = (index, path, times) =>
+        {
+            if (path != null) targetData[index] = (path, times);
+            finishedCount++;
+        };
 
-        // 모든 타겟에 대해 움직임 시작
         for (int i = 0; i < targetCount; i++)
         {
-            int targetIndex = i; // 클로저를 위한 인덱스 복사
-
-            // 추적이 완료되면 호출될 콜백 함수
-            System.Action<List<Vector2>, List<float>> onPursuitComplete = (targetPath, targetTimes) =>
-            {
-                if (targetPath != null)
-                {
-                    targetPaths[targetIndex] = (targetPath, targetTimes);
-                }
-                finishedCount++;
-            };
-
-            // 현재 뷰 모드에 맞춰 추적 시작
+            int targetIndex = i;
             if (pathVisualizer.Is3DMode)
             {
                 Transform target = pathVisualizer.GetTargetTransform(targetIndex);
-                if (target != null)
-                {
-                    List<Vector3> pathPoints = new List<Vector3> { pathVisualizer.startPoint.position, target.position };
-                    pursuitMover3D.StartMovement(pathPoints, travelDuration, onPursuitComplete);
-                }
+                List<Vector3> pathPoints = new List<Vector3> { pathVisualizer.startPoint.position, target.position };
+                pursuitMover3D.StartMovement(pathPoints, travelDuration, (p, t) => onPursuitComplete(targetIndex, p, t));
             }
             else
             {
                 UILineConnector lineToFollow = pathVisualizer.GetUILine(targetIndex);
-                if (lineToFollow != null)
-                {
-                    pursuitMover2D.StartMovement(lineToFollow, travelDuration, onPursuitComplete);
-                }
+                pursuitMover2D.StartMovement(lineToFollow, travelDuration, (p, t) => onPursuitComplete(targetIndex, p, t));
             }
         }
 
-        // 모든 타겟의 움직임이 끝날 때까지 대기
+        // --- 변경점 2: 'travelDuration' 동안만 마우스 경로를 기록 ---
+        float drawingTimer = 0f;
+        while (drawingTimer < travelDuration)
+        {
+            userDrawnPath.Add(Input.mousePosition);
+            userDrawnTimes.Add(Time.time);
+            drawingTimer += Time.deltaTime;
+            yield return null;
+        }
+
         yield return new WaitUntil(() => finishedCount == targetCount);
 
-        // 시선 기록 중지 및 데이터 가져오기
-        var (userPath, userTimes) = gazeRecorder.StopRecording();
+        // (이하 분석 로직은 모두 동일합니다)
+        if (userDrawnPath.Count < 5)
+        {
+            Debug.LogWarning("사용자 경로가 너무 짧아 분석을 중단합니다.");
+            analysisCoroutine = null;
+            yield break;
+        }
 
-        // --- 분석 결과 출력 ---
-        Debug.Log($"--- 동시 추적 분석 결과 (뷰 모드: {(pathVisualizer.Is3DMode ? "3D" : "2D")}) ---");
+        float userAverageSpeed = GestureAnalyser.GetAverageSpeed(userDrawnPath, userDrawnTimes);
 
-        var results = new List<(int index, float frechet, float velocity)>();
+        Debug.Log($"--- 통합 분석 결과 (모드: {(pathVisualizer.Is3DMode ? "3D" : "2D")}) ---");
+        var results = new List<(int index, float frechet, float velocitySim, float combinedScore)>();
+
+        var frechetValues = new List<float>();
         for (int i = 0; i < targetCount; i++)
         {
-            var (targetPath, targetTimes) = targetPaths[i];
-            if (targetPath == null || targetPath.Count == 0) continue;
+            var (path, _) = targetData[i];
+            if (path == null || path.Count == 0) { frechetValues.Add(float.MaxValue); continue; }
+            frechetValues.Add(GestureAnalyser.CalculateFrechetDistance(userDrawnPath, path));
+        }
+        float maxFrechet = frechetValues.Where(f => f < float.MaxValue).DefaultIfEmpty(0).Max();
+        if (maxFrechet <= float.Epsilon) maxFrechet = 1.0f;
 
-            float frechetDist = GestureAnalyser.CalculateFrechetDistance(userPath, targetPath);
-            float velocitySim = GestureAnalyser.CalculateVelocitySimilarity(userPath, userTimes, targetPath, targetTimes);
-            results.Add((i, frechetDist, velocitySim));
+        for (int i = 0; i < targetCount; i++)
+        {
+            var (path, times) = targetData[i];
+            if (path == null || path.Count == 0) continue;
 
-            Debug.Log($"[타겟 {i + 1}] 프레셰 거리(유사도): {frechetDist:F2} / 속도 유사도(리듬): {velocitySim:F2}");
+            float frechetCost = frechetValues[i];
+            float normalizedFrechet = frechetCost / maxFrechet;
+
+            float targetAverageSpeed = GestureAnalyser.GetAverageSpeed(path, times);
+            float correctedTargetSpeed = targetAverageSpeed * perceptionCoefficient;
+            float velocitySimilarity = GestureAnalyser.CalculateVelocitySimilarity(userAverageSpeed, correctedTargetSpeed);
+            float velocityCost = 1.0f - velocitySimilarity;
+
+            float combinedScore = (shapeWeight * normalizedFrechet) + (velocityWeight * velocityCost);
+
+            if (float.IsNaN(combinedScore)) continue;
+
+            results.Add((i, frechetCost, velocitySimilarity, combinedScore));
+            Debug.Log($"[타겟 {i + 1}] 프레셰: {frechetCost:F2}, 속도유사도: {velocitySimilarity:P2}, 최종점수: {combinedScore:F3}");
         }
 
-        // 가장 잘 따라간 타겟 찾기 (프레셰 거리가 가장 작은 값)
         if (results.Any())
         {
-            var bestMatch = results.OrderBy(r => r.frechet).First();
-            Debug.Log($"<결론> 사용자는 '타겟 {bestMatch.index + 1}'의 경로를 가장 유사하게 따라갔습니다.");
-            pathVisualizer.HighlightPath(bestMatch.index); // 가장 유사한 경로 하이라이트
+            var bestMatch = results.OrderBy(r => r.combinedScore).First();
+            Debug.Log($"--- 최종 판별 ---");
+            Debug.Log($"<color=cyan><입력 성공> '타겟 {bestMatch.index + 1}'이(가) 최종 입력으로 판별되었습니다. (최저 점수: {bestMatch.combinedScore:F3})</color>");
+            pathVisualizer.HighlightPath(bestMatch.index);
         }
-
-        Debug.Log("--------------------------------------------------");
+        else
+        {
+            Debug.LogWarning("--- 최종 판별 실패 --- 유효한 분석 결과를 얻지 못했습니다.");
+        }
         analysisCoroutine = null;
-    }
-
-    public void OnSwitchViewClicked()
-    {
-        pathVisualizer.SwitchViewMode();
-        Debug.Log($"뷰 모드가 {(pathVisualizer.Is3DMode ? "3D" : "2D")}(으)로 전환되었습니다.");
     }
 }
