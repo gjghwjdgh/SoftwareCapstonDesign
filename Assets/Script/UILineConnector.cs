@@ -1,64 +1,77 @@
 using UnityEngine;
-using UnityEngine.UI;
+using System.Collections.Generic;
+using System.Linq;
 
+[RequireComponent(typeof(LineRenderer))]
 public class UILineConnector : MonoBehaviour
 {
-    private Transform startPoint3D, target3D;
+    private LineRenderer lineRenderer;
     private Camera mainCamera;
-    private RectTransform rectTransform;
-    private Image lineImage;
+
+    // 경로 데이터를 저장하기 위한 변수
+    private Transform startPoint3D;
+    private Transform target3D;
+    private List<Vector3> worldCurvePath; // 곡선 원본 경로(월드 좌표)
+
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
 
-    public Transform StartPoint3D => startPoint3D;
-    public Transform Target3D => target3D;
+    void Awake()
+    {
+        lineRenderer = GetComponent<LineRenderer>();
+        lineRenderer.sortingOrder = 1;
+    }
 
-    public void Initialize(Transform start, Transform target, Camera camera)
+    public void InitializeLine(Transform start, Transform target, Camera camera)
     {
         this.startPoint3D = start;
         this.target3D = target;
         this.mainCamera = camera;
-        this.rectTransform = GetComponent<RectTransform>();
-        this.lineImage = GetComponent<Image>();
+        this.worldCurvePath = null;
+        lineRenderer.positionCount = 2;
+        SetHighlight(false);
+    }
+
+    public void InitializeCurve(List<Vector3> worldPath, Camera camera)
+    {
+        this.worldCurvePath = worldPath;
+        this.mainCamera = camera;
+        this.startPoint3D = null;
+        this.target3D = null;
+        lineRenderer.positionCount = worldPath.Count;
         SetHighlight(false);
     }
 
     void Update()
     {
-        if (startPoint3D == null || target3D == null || mainCamera == null) return;
-        UpdateLinePosition();
+        if (mainCamera == null) return;
+
+        // 곡선 모드일 경우
+        if (worldCurvePath != null && worldCurvePath.Any())
+        {
+            // 매 프레임마다 월드 경로를 UI 로컬 경로로 새로 변환하여 다시 그립니다.
+            var localPath = worldCurvePath.Select(p => WorldToCanvasLocal(p)).ToArray();
+            lineRenderer.SetPositions(localPath);
+        }
+        // 직선 모드일 경우
+        else if (startPoint3D != null && target3D != null)
+        {
+            // 매 프레임마다 시작점과 끝점의 위치를 새로 계산하여 다시 그립니다.
+            lineRenderer.SetPosition(0, WorldToCanvasLocal(startPoint3D.position));
+            lineRenderer.SetPosition(1, WorldToCanvasLocal(target3D.position));
+        }
     }
 
-    void UpdateLinePosition()
+    private Vector3 WorldToCanvasLocal(Vector3 worldPosition)
     {
-        // 3D 공간의 StartPoint와 Target의 화면 좌표를 계산합니다.
-        Vector3 startScreenPoint3D = mainCamera.WorldToScreenPoint(startPoint3D.position);
-        Vector2 targetScreenPoint = mainCamera.WorldToScreenPoint(target3D.position);
-
-        // ✨ --- 핵심 수정 --- ✨
-        // StartPoint가 카메라 뒤(z <= 0)에 있는지 확인합니다.
-        if (startScreenPoint3D.z <= 0)
-        {
-            // 뒤에 있다면, 선을 그냥 숨겨서 버그를 방지합니다.
-            lineImage.enabled = false;
-            return; // 여기서 함수를 종료합니다.
-        }
-
-        // StartPoint가 카메라 앞에 있다면, 선이 보이도록 합니다.
-        lineImage.enabled = true;
-
-        // 이제 선의 시작점은 무조건 StartPoint의 실제 화면 좌표가 됩니다.
-        Vector2 finalStartScreenPoint = startScreenPoint3D;
-
-        // 두 점을 잇는 선을 그립니다.
-        Vector2 difference = targetScreenPoint - finalStartScreenPoint;
-        rectTransform.sizeDelta = new Vector2(difference.magnitude, 5f);
-        rectTransform.position = finalStartScreenPoint + (difference / 2);
-        rectTransform.localEulerAngles = new Vector3(0, 0, Mathf.Atan2(difference.y, difference.x) * Mathf.Rad2Deg);
+        Vector2 screenPoint = mainCamera.WorldToScreenPoint(worldPosition);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            transform.parent as RectTransform, screenPoint, mainCamera, out Vector2 localPoint);
+        return localPoint;
     }
 
     public void SetHighlight(bool highlighted)
     {
-        if (lineImage != null) lineImage.color = highlighted ? highlightColor : normalColor;
+        if (lineRenderer != null) lineRenderer.startColor = lineRenderer.endColor = highlighted ? highlightColor : normalColor;
     }
 }

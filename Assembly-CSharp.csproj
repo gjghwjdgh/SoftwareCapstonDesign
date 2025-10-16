@@ -63,6 +63,7 @@
   <ItemGroup>
     <Compile Include="Assets\Script\PathVisualizer.cs" />
     <Compile Include="Assets\Script\PathDrawer.cs" />
+    <Compile Include="Assets\Script\Algorithm\PathUtilities.cs" />
     <Compile Include="Assets\Script\ObjectMover\ObjectMover2D.cs" />
     <Compile Include="Assets\Script\Camera\CameraController.cs" />
     <Compile Include="Assets\Script\Algorithm\GestureAnalyser.cs" />

@@ -7,15 +7,14 @@ public class UIPursuitMover : MonoBehaviour
     public Image helperPrefab;
     public Transform canvasTransform;
 
-    // ✨ 약속을 통일: 경로 데이터를 받는 콜백(Action)을 받도록 수정
-    public void StartMovement(UILineConnector lineToFollow, float duration, System.Action<List<Vector2>, List<float>> onComplete)
+    // -- 핵심 변경: 2D 스크린 경로 대신 3D 월드 경로를 받습니다 ---
+    public void StartMovement(List<Vector3> worldPath, float duration, System.Action<List<Vector2>, List<float>> onComplete)
     {
         Image helperInstance = Instantiate(helperPrefab, canvasTransform);
         ObjectMover2D mover = helperInstance.GetComponent<ObjectMover2D>();
         if (mover != null)
         {
-            // 받은 콜백을 그대로 ObjectMover2D에게 전달
-            StartCoroutine(mover.MoveOnScreen(lineToFollow, duration, onComplete));
+            StartCoroutine(mover.MoveOnScreen(worldPath, duration, onComplete));
         }
         else
         {
