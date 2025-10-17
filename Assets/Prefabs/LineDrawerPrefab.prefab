@@ -46,8 +46,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   lineRenderer3D: {fileID: 7536875344849351508}
-  lineRenderer2D: {fileID: 0}
-  curveFactor: 50
   normalColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   highlightColor: {r: 0, g: 1, b: 1, a: 1}
 --- !u!1 &6467570016835629567
@@ -138,7 +136,7 @@ LineRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.07533687
+        value: 0.12727779
         inSlope: 0
         outSlope: 0
         tangentMode: 0
