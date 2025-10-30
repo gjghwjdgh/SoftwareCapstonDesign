@@ -5,16 +5,18 @@ using System.Linq;
 public class PathVisualizer : MonoBehaviour
 {
     [Header("핵심 설정")]
-    // ✨ --- 핵심 변경: 여러 개의 startPoints가 아닌, 단 하나의 startPoint로 복귀 ---
     public Transform startPoint;
-    public List<Transform> targets;
+    public List<Transform> targets = new List<Transform>();
     public Transform uiCanvas;
 
     [Header("프리팹")]
     public GameObject lineDrawer3DPrefab;
     public GameObject uiLinePrefab;
 
-    private GameUIManager gameUIManager;
+    // GameUIManager와의 통신을 위해 참조를 추가합니다.
+    [Header("관리자 연결")]
+    public GameUIManager gameUIManager;
+
     private List<PathDrawer> pathDrawers3D = new List<PathDrawer>();
     private List<UILineConnector> uiLines2D = new List<UILineConnector>();
     private bool is3DMode = true;
@@ -24,20 +26,20 @@ public class PathVisualizer : MonoBehaviour
     void Start()
     {
         mainCamera = Camera.main;
-        gameUIManager = FindAnyObjectByType<GameUIManager>();
-        GenerateAndShowAllPaths();
+        if (gameUIManager == null) gameUIManager = FindObjectOfType<GameUIManager>();
     }
 
     public void GenerateAndShowAllPaths()
     {
-        if (gameUIManager == null) gameUIManager = FindAnyObjectByType<GameUIManager>();
+        if (gameUIManager == null) gameUIManager = FindObjectOfType<GameUIManager>();
 
         foreach (var line in pathDrawers3D) if (line != null) Destroy(line.gameObject);
         foreach (var line in uiLines2D) if (line != null) Destroy(line.gameObject);
         pathDrawers3D.Clear();
         uiLines2D.Clear();
 
-        // ✨ --- 핵심 변경: targets 리스트를 기준으로 루프를 실행 ---
+        if (targets == null) targets = new List<Transform>();
+
         for (int i = 0; i < targets.Count; i++)
         {
             if (startPoint == null || targets[i] == null) continue;
@@ -45,35 +47,17 @@ public class PathVisualizer : MonoBehaviour
             PathDrawer drawer3D = Instantiate(lineDrawer3DPrefab, transform).GetComponent<PathDrawer>();
             UILineConnector uiLine = Instantiate(uiLinePrefab, uiCanvas).GetComponent<UILineConnector>();
 
-            // 1번 타겟(인덱스 0)에만 곡선/직선 토글 기능 적용
-            bool isCurve = (i == 0 && gameUIManager.IsTarget1CurveMode && gameUIManager.target1_ControlPoint1 != null && gameUIManager.target1_ControlPoint2 != null);
+            // AR에서는 곡선 경로 기능이 아직 복잡하므로, 우선 직선으로만 처리합니다.
+            // 필요하다면 나중에 AR용 곡선 설정 로직을 추가할 수 있습니다.
+            drawer3D.InitializeLine(startPoint, targets[i]);
+            uiLine.InitializeLine(startPoint, targets[i], mainCamera);
 
-            if (isCurve)
-            {
-                var pathPoints = PathUtilities.GenerateBezierCurvePath(
-                    startPoint.position, // 공통 시작점
-                    gameUIManager.target1_ControlPoint1.position,
-                    gameUIManager.target1_ControlPoint2.position,
-                    targets[i].position, // 각자의 도착점
-                    gameUIManager.curveSegmentCount
-                );
-                drawer3D.InitializeCurve(pathPoints);
-                uiLine.InitializeCurve(pathPoints, mainCamera);
-            }
-            else
-            {
-                drawer3D.InitializeLine(startPoint, targets[i]); // 공통 시작점과 각자의 도착점
-                uiLine.InitializeLine(startPoint, targets[i], mainCamera);
-            }
             pathDrawers3D.Add(drawer3D);
             uiLines2D.Add(uiLine);
         }
         UpdateViewMode();
     }
 
-    // 이 함수들은 이제 거의 사용되지 않지만, 호환성을 위해 유지
-    public Transform GetTargetTransform(int index) { return (index < 0 || index >= targets.Count) ? null : targets[index]; }
-    public UILineConnector GetUILine(int index) { return (index < 0 || index >= uiLines2D.Count) ? null : uiLines2D[index]; }
     public void SwitchViewMode() { is3DMode = !is3DMode; UpdateViewMode(); }
 
     void UpdateViewMode()
@@ -82,13 +66,23 @@ public class PathVisualizer : MonoBehaviour
         foreach (var line in uiLines2D) if (line != null) line.gameObject.SetActive(!is3DMode);
     }
 
+    // ★★★ 여기가 핵심 수정 부분 ★★★
+    // IndexOutOfRangeException을 원천적으로 방지하는 더 안전한 코드로 변경
     public void HighlightPath(int targetIndex)
     {
-        for (int i = 0; i < targets.Count; i++)
+        for (int i = 0; i < pathDrawers3D.Count; i++)
         {
-            bool isHighlighted = (i == targetIndex);
-            if (i < pathDrawers3D.Count && pathDrawers3D[i] != null) pathDrawers3D[i].SetHighlight(isHighlighted);
-            if (i < uiLines2D.Count && uiLines2D[i] != null) uiLines2D[i].SetHighlight(isHighlighted);
+            if (pathDrawers3D[i] != null)
+            {
+                pathDrawers3D[i].SetHighlight(i == targetIndex);
+            }
+        }
+        for (int i = 0; i < uiLines2D.Count; i++)
+        {
+            if (uiLines2D[i] != null)
+            {
+                uiLines2D[i].SetHighlight(i == targetIndex);
+            }
         }
     }
 }
