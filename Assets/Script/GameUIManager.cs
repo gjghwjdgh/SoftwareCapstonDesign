@@ -10,29 +10,46 @@ public class GameUIManager : MonoBehaviour
     [Header("UI 연결")]
     public TextMeshProUGUI infoText;
     public TextMeshProUGUI detailText;
+    public GameObject userTrailPrefab; // 사용자 궤적을 그릴 프리팹
 
     [Header("관리자 스크립트 연결")]
     public PathVisualizer pathVisualizer;
     public PursuitMover pursuitMover3D;
-    public UIPursuitMover pursuitMover2D;
     public ARPlacementManager placementManager;
 
     [Header("설정")]
     public float travelDuration = 3.0f;
+
+    [Header("자동 곡률 설정")]
+    [Tooltip("경로가 휘는 기본 강도입니다. 높을수록 더 많이 휩니다.")]
+    public float curvatureStrength = 0.5f;
 
     [Header("페이즈(Phase) 배분 설정")]
     [Range(1, 10)]
     public int phaseCount = 4;
 
     [Header("입력 판별 설정")]
-    [Tooltip("형태(모양)의 중요도")]
     [Range(0f, 1f)] public float shapeWeight = 0.8f;
-    [Tooltip("속도의 중요도")]
     [Range(0f, 1f)] public float velocityWeight = 0.2f;
-    [Tooltip("사용자가 인식하는 도우미의 속도 보정 계수")]
     [Range(0f, 1f)] public float perceptionCoefficient = 0.8f;
 
     private bool isAnalyzing = false;
+    private LineRenderer currentUserTrail; // 현재 그려지고 있는 선
+    private RectTransform canvasRectTransform; // 캔버스 RectTransform 캐시
+
+    void Start()
+    {
+        // 캔버스의 RectTransform을 미리 찾아둡니다. (좌표 변환에 필요)
+        if (placementManager != null)
+        {
+            // ARPlacementManager가 Canvas의 자식일 필요는 없으므로, 씬 전체에서 Canvas를 찾습니다.
+            Canvas canvas = FindObjectOfType<Canvas>();
+            if (canvas != null)
+            {
+                canvasRectTransform = canvas.GetComponent<RectTransform>();
+            }
+        }
+    }
 
     public void StartAnalysis()
     {
@@ -46,7 +63,7 @@ public class GameUIManager : MonoBehaviour
 
         if (placementManager != null) placementManager.SetPlacementMode(false);
         pathVisualizer.HighlightPath(-1);
-        if (infoText != null) infoText.text = "경로를 따라 그려보세요!";
+        if (infoText != null) infoText.text = "반복되는 객체를 보고 경로를 따라 그려보세요!";
         if (detailText != null) detailText.text = "";
 
         if (pathVisualizer.targets == null || pathVisualizer.targets.Count == 0)
@@ -55,12 +72,9 @@ public class GameUIManager : MonoBehaviour
             yield break;
         }
 
-        // --- (이하 도우미 객체 출발까지의 코드는 이전과 동일) ---
         int pathCount = pathVisualizer.targets.Count;
         var targetData = new List<(List<Vector2> path, List<float> times)>(new (List<Vector2>, List<float>)[pathCount]);
         int finishedCount = 0;
-        List<Vector2> userDrawnPath = new List<Vector2>();
-        List<float> userDrawnTimes = new List<float>();
 
         System.Action<int, List<Vector2>, List<float>> onPursuitComplete = (index, path, times) =>
         {
@@ -77,30 +91,59 @@ public class GameUIManager : MonoBehaviour
             Transform startPoint = pathVisualizer.startPoint;
             Transform target = pathVisualizer.targets[capturedIndex];
             if (startPoint == null || target == null) continue;
-            List<Vector3> fullPath = new List<Vector3>();
-            for (int j = 0; j <= 100; j++)
-            {
-                fullPath.Add(Vector3.Lerp(startPoint.position, target.position, j / 100f));
-            }
+
+            Vector3 p0 = startPoint.position;
+            Vector3 p2 = target.position;
+            Vector3 midPoint = (p0 + p2) / 2f;
+            Vector3 direction = (p2 - p0).normalized;
+            Vector3 perpendicular = Vector3.Cross(direction, Vector3.up).normalized;
+            float curveDirection = (i % 2 == 0) ? 1f : -1f;
+            float curveMagnitude = (i / 2 + 1) * curvatureStrength;
+            Vector3 controlPoint = midPoint + (perpendicular * curveDirection * curveMagnitude);
+            List<Vector3> fullPath = PathUtilities.GenerateQuadraticBezierCurvePath(p0, controlPoint, p2, 50);
+
             int phaseGroupIndex = capturedIndex % phaseCount;
             float startFraction = (float)(phaseGroupIndex + 1) / (phaseCount + 1);
             int startIndex = Mathf.RoundToInt((fullPath.Count - 1) * startFraction);
             List<Vector3> partialPath = fullPath.GetRange(startIndex, fullPath.Count - startIndex);
+
             pursuitMover3D.StartMovement(partialPath, travelDuration, (p, t) => onPursuitComplete(capturedIndex, p, t));
         }
 
-        float drawingTimer = 0f;
+        List<Vector2> userDrawnPath = new List<Vector2>();
+        List<float> userDrawnTimes = new List<float>();
+
+        if (infoText != null) infoText.text = "준비되면 화면을 눌러 그리기 시작하세요.";
         yield return new WaitUntil(() => Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame);
+
+        if (userTrailPrefab != null && canvasRectTransform != null)
+        {
+            GameObject trailObj = Instantiate(userTrailPrefab, canvasRectTransform);
+            currentUserTrail = trailObj.GetComponent<LineRenderer>();
+            currentUserTrail.positionCount = 0;
+        }
+
+        if (infoText != null) infoText.text = "그리는 중... 손을 떼면 분석이 시작됩니다.";
+
         while (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
         {
-            userDrawnPath.Add(Touchscreen.current.primaryTouch.position.ReadValue());
+            Vector2 touchPosition = Touchscreen.current.primaryTouch.position.ReadValue();
+            userDrawnPath.Add(touchPosition);
             userDrawnTimes.Add(Time.time);
-            if (drawingTimer >= travelDuration) break;
-            drawingTimer += Time.deltaTime;
+
+            if (currentUserTrail != null)
+            {
+                int pointCount = currentUserTrail.positionCount;
+                currentUserTrail.positionCount = pointCount + 1;
+                currentUserTrail.SetPosition(pointCount, ScreenToCanvasPosition(touchPosition));
+            }
+
             yield return null;
         }
 
+        if (infoText != null) infoText.text = "분석 중...";
         yield return new WaitUntil(() => finishedCount >= pathCount);
+        pursuitMover3D.StopAllMovements();
 
         if (userDrawnPath.Count < 5)
         {
@@ -108,14 +151,8 @@ public class GameUIManager : MonoBehaviour
         }
         else
         {
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-            // ★★★ 여기가 기존 시스템을 '보완'하는 새로운 분석 로직입니다 ★★★
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
             var results = new List<(int index, float frechet, float velocitySim, float combinedScore)>();
-
             float userAverageSpeed = GestureAnalyser.GetAverageSpeed(userDrawnPath, userDrawnTimes);
-            Debug.Log($"사용자 평균 속도: {userAverageSpeed:F2}");
-
             for (int i = 0; i < pathCount; i++)
             {
                 if (i < targetData.Count)
@@ -123,23 +160,14 @@ public class GameUIManager : MonoBehaviour
                     var (path, times) = targetData[i];
                     if (path == null || path.Count < 2) continue;
 
-                    // 1. 프레셰 거리 계산 (기존과 동일)
                     float frechetCost = GestureAnalyser.CalculateFrechetDistance(userDrawnPath, path);
-
-                    // 2. 속도 유사도 계산 (기존과 동일)
                     float targetAverageSpeed = GestureAnalyser.GetAverageSpeed(path, times);
-                    Debug.Log($"[타겟 {i + 1}] 도우미 평균 속도: {targetAverageSpeed:F2}");
                     float correctedTargetSpeed = targetAverageSpeed * perceptionCoefficient;
                     float velocitySimilarity = GestureAnalyser.CalculateVelocitySimilarity(userAverageSpeed, correctedTargetSpeed);
 
-                    // 3. 최종 점수 계산 (보완된 방식)
-                    // 프레셰 거리를 경로의 대각선 길이로 나누어 '정규화'합니다.
                     float pathDiagonalLength = Vector2.Distance(path.First(), path.Last());
                     float normalizedShapeCost = (pathDiagonalLength > 1f) ? (frechetCost / pathDiagonalLength) : frechetCost;
-
-                    // 속도 유사도는 '비용(Cost)' 개념으로 변환합니다.
                     float velocityCost = 1.0f - velocitySimilarity;
-
                     float combinedScore = (shapeWeight * normalizedShapeCost) + (velocityWeight * velocityCost);
 
                     if (float.IsNaN(combinedScore)) continue;
@@ -150,15 +178,11 @@ public class GameUIManager : MonoBehaviour
             if (results.Any())
             {
                 var bestMatch = results.OrderBy(r => r.combinedScore).First();
-
                 if (infoText != null) infoText.text = $"판별 성공: 경로 {bestMatch.index + 1}";
-
                 if (detailText != null)
                 {
-                    // 이제 원래의 '프레셰 거리'와 '속도 유사도'를 그대로 표시합니다.
                     detailText.text = $"프레셰 거리: {bestMatch.frechet:F2}\n속도 유사도: {bestMatch.velocitySim:P0}";
                 }
-
                 pathVisualizer.HighlightPath(bestMatch.index);
             }
             else
@@ -173,10 +197,26 @@ public class GameUIManager : MonoBehaviour
 
     private void GoToIdleState()
     {
+        if (currentUserTrail != null)
+        {
+            Destroy(currentUserTrail.gameObject);
+            currentUserTrail = null;
+        }
+
+        if (pursuitMover3D != null) pursuitMover3D.StopAllMovements();
         if (placementManager != null) placementManager.SetPlacementMode(true);
         if (infoText != null) infoText.text = "목표 지점을 추가하거나 다시 분석하세요.";
         if (detailText != null) detailText.text = "";
         pathVisualizer.HighlightPath(-1);
         isAnalyzing = false;
+    }
+
+    private Vector2 ScreenToCanvasPosition(Vector2 screenPosition)
+    {
+        if (canvasRectTransform == null) return Vector2.zero;
+
+        // UI 카메라가 없는 Screen Space - Overlay 캔버스이므로 camera 파라미터는 null
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPosition, null, out Vector2 localPoint);
+        return localPoint;
     }
 }
