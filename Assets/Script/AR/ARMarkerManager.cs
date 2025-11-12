@@ -1,21 +1,20 @@
-// 파일 이름: ARMarkerManager.cs
-
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
-using UnityEngine.UI; // Button 사용을 위해 추가
+using UnityEngine.UI;
 using Unity.XR.CoreUtils;
 
-public class ARMarkerManager : MonoBehaviour
+public class ARMarkerManager : MonoBehaviour, ISceneStateHandler
 {
     [Header("관리자 연결")]
     public PathVisualizer pathVisualizer;
     public GameUIManager gameUIManager;
 
+    // ★★★ 여기가 추가된 부분 ★★★
     [Header("UI 연결")]
-    public Button startAnalysisButton; // 마커 씬에서도 분석 시작 버튼 제어
+    public Button startAnalysisButton;
 
     [Header("마커-프리팹 매칭")]
     public XRReferenceImageLibrary referenceImageLibrary;
@@ -130,11 +129,10 @@ public class ARMarkerManager : MonoBehaviour
         }
     }
 
-    // --- ISceneStateHandler 인터페이스 구현 ---
+    // --- ISceneStateHandler 인터페이스 구현 (기존과 동일) ---
 
     public void EnterAnalysisState()
     {
-        // 분석이 시작되면 버튼만 숨깁니다. (마커 추적은 계속되어야 함)
         if (startAnalysisButton != null)
         {
             startAnalysisButton.gameObject.SetActive(false);
@@ -143,10 +141,17 @@ public class ARMarkerManager : MonoBehaviour
 
     public void EnterIdleState()
     {
-        // 유휴 상태가 되면, 조건에 따라 버튼을 다시 보여줍니다.
         if (startAnalysisButton != null)
         {
             startAnalysisButton.gameObject.SetActive(targetInstances.Count > 0 && startPointInstance != null);
+        }
+    }
+    public void OnStartAnalysisButtonClicked()
+    {
+        // 하는 일은 단 하나, GameUIManager에게 분석 시작 신호를 보내는 것입니다.
+        if (gameUIManager != null)
+        {
+            gameUIManager.StartAnalysis();
         }
     }
 }
