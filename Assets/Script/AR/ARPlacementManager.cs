@@ -1,3 +1,5 @@
+// 파일 이름: ARPlacementManager.cs
+
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
@@ -84,13 +86,25 @@ public class ARPlacementManager : MonoBehaviour
         }
     }
 
-    public void SetPlacementMode(bool isActive)
+    // --- ISceneStateHandler 인터페이스 구현 ---
+
+    public void EnterAnalysisState()
     {
-        this.enabled = isActive;
+        // 분석이 시작되면, 터치 입력을 막고 버튼을 숨깁니다.
+        this.enabled = false;
         if (startAnalysisButton != null)
         {
-            startAnalysisButton.gameObject.SetActive(isActive && placedTargets.Count > 0);
+            startAnalysisButton.gameObject.SetActive(false);
         }
     }
 
+    public void EnterIdleState()
+    {
+        // 유휴 상태가 되면, 다시 터치 입력을 허용하고 버튼을 보여줍니다.
+        this.enabled = true;
+        if (startAnalysisButton != null)
+        {
+            startAnalysisButton.gameObject.SetActive(placedTargets.Count > 0);
+        }
+    }
 }
