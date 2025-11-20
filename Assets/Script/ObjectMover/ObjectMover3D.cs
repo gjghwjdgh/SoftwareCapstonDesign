@@ -5,68 +5,76 @@ using System.Linq;
 
 public class ObjectMover3D : MonoBehaviour
 {
-    public AnimationCurve speedCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
-    private bool shouldLoop = true; // 반복 여부를 제어하는 플래그
+    // 페이즈 위치를 정확히 반영하기 위해 Linear 사용 (0.5는 정확히 50% 지점)
+    public AnimationCurve speedCurve = AnimationCurve.Linear(0, 0, 1, 1);
+    private bool shouldLoop = true;
 
-    // GameUIManager가 "정지!" 명령을 내릴 때 호출할 함수
-    public void StopMovement()
+    public void StopMovement() { shouldLoop = false; }
+
+    // ★★★ 외부에서 강제로 위치를 잡는 함수 (생성 즉시 호출용) ★★★
+    public void ForceSetPosition(List<Vector3> path, float rawProgress)
     {
-        shouldLoop = false;
+        UpdatePosition(path, rawProgress);
     }
 
-    public IEnumerator MoveAlongPath(List<Vector3> path, float duration, System.Action<List<Vector2>, List<float>> onComplete)
+    public IEnumerator MoveAlongPathWithPhase(List<Vector3> path, float duration, float startPhase, System.Action<List<Vector2>, List<float>> onComplete)
     {
         List<Vector2> targetScreenPath = new List<Vector2>();
         List<float> targetTimestamps = new List<float>();
         Camera mainCamera = Camera.main;
-
-        // onComplete 콜백은 '분석 데이터 수집'을 위해 딱 한 번만 실행합니다.
         bool hasCompletedOnce = false;
 
-        // shouldLoop 플래그가 true인 동안 무한히 반복합니다.
+        float currentProgress = startPhase;
+
+        // 여기서도 한번 더 확실하게 위치 세팅
+        UpdatePosition(path, currentProgress);
+
         while (shouldLoop)
         {
-            float elapsedTime = 0f;
-            while (elapsedTime < duration)
+            currentProgress += Time.deltaTime / duration;
+
+            if (currentProgress >= 1.0f)
             {
-                if (!shouldLoop) break; // 외부에서 정지 명령이 들어오면 즉시 중단
+                currentProgress %= 1.0f;
 
-                float progress = elapsedTime / duration;
-                float curveProgress = speedCurve.Evaluate(progress);
-
-                float pathProgress = curveProgress * (path.Count - 1);
-                int currentIndex = Mathf.FloorToInt(pathProgress);
-                int nextIndex = Mathf.Min(currentIndex + 1, path.Count - 1);
-                float segmentProgress = pathProgress - currentIndex;
-
-                if (currentIndex < path.Count && nextIndex < path.Count)
-                {
-                    transform.position = Vector3.Lerp(path[currentIndex], path[nextIndex], segmentProgress);
-                }
-
-                // 분석 데이터는 딱 한 번만 기록합니다.
                 if (!hasCompletedOnce)
                 {
-                    targetScreenPath.Add(mainCamera.WorldToScreenPoint(transform.position));
-                    targetTimestamps.Add(Time.time);
+                    if (path.Any())
+                    {
+                        targetScreenPath.Add(mainCamera.WorldToScreenPoint(path.Last()));
+                        targetTimestamps.Add(Time.time);
+                    }
+                    onComplete?.Invoke(targetScreenPath, targetTimestamps);
+                    hasCompletedOnce = true;
                 }
-
-                elapsedTime += Time.deltaTime;
-                yield return null;
             }
 
-            // 분석 데이터 기록 및 콜백 호출 (최초 한 번만)
-            if (!hasCompletedOnce && path.Any())
+            UpdatePosition(path, currentProgress);
+
+            if (!hasCompletedOnce)
             {
-                transform.position = path.Last();
                 targetScreenPath.Add(mainCamera.WorldToScreenPoint(transform.position));
                 targetTimestamps.Add(Time.time);
-                onComplete?.Invoke(targetScreenPath, targetTimestamps);
-                hasCompletedOnce = true;
             }
-        }
 
-        // 루프가 끝나면(정지 명령을 받으면) 스스로를 파괴합니다.
+            yield return null;
+        }
         Destroy(gameObject);
+    }
+
+    private void UpdatePosition(List<Vector3> path, float rawProgress)
+    {
+        if (path == null || path.Count == 0) return;
+
+        float curveProgress = speedCurve.Evaluate(rawProgress);
+        float pathVal = curveProgress * (path.Count - 1);
+        int idx = Mathf.FloorToInt(pathVal);
+        int nextIdx = Mathf.Min(idx + 1, path.Count - 1);
+        float t = pathVal - idx;
+
+        if (idx < path.Count && nextIdx < path.Count)
+        {
+            transform.position = Vector3.Lerp(path[idx], path[nextIdx], t);
+        }
     }
 }

@@ -1,5 +1,3 @@
-// 파일 이름: ARPlacementManager.cs
-
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
@@ -9,17 +7,13 @@ using TMPro;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(ARRaycastManager))]
-public class ARPlacementManager : MonoBehaviour
+public class ARPlacementManager : MonoBehaviour // ISceneStateHandler 제거
 {
     [Header("핵심 연결")]
     public PathVisualizer pathVisualizer;
     public GameUIManager gameUIManager;
-
-    [Header("UI 연결")]
     public Button startAnalysisButton;
     public TextMeshProUGUI infoText;
-
-    [Header("생성할 프리팹")]
     public GameObject startPointPrefab;
     public GameObject targetPrefab;
 
@@ -31,31 +25,18 @@ public class ARPlacementManager : MonoBehaviour
     void Awake()
     {
         arRaycastManager = GetComponent<ARRaycastManager>();
-
-        if (startAnalysisButton != null)
-        {
-            startAnalysisButton.gameObject.SetActive(false);
-        }
-        if (infoText != null)
-        {
-            infoText.text = "바닥을 비추고 시작 지점을 배치하세요.";
-        }
+        if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(false);
+        if (infoText != null) infoText.text = "바닥을 비추고 시작 지점을 배치하세요.";
     }
 
     void Update()
     {
-        if (Touchscreen.current == null || !Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
-        {
-            return;
-        }
+        if (!this.enabled) return; // 비활성화 시 작동 중단
+
+        if (Touchscreen.current == null || !Touchscreen.current.primaryTouch.press.wasPressedThisFrame) return;
+        if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
 
         Vector2 touchPosition = Touchscreen.current.primaryTouch.position.ReadValue();
-
-        if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
-        {
-            return;
-        }
-
         if (arRaycastManager.Raycast(touchPosition, hits, TrackableType.PlaneWithinPolygon))
         {
             var hitPose = hits[0].pose;
@@ -71,7 +52,6 @@ public class ARPlacementManager : MonoBehaviour
                 placedTargets.Add(newTarget);
                 if (infoText != null) infoText.text = $"{placedTargets.Count}개의 목표 지점 배치 완료.";
                 if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(true);
-
                 pathVisualizer.targets = placedTargets;
                 pathVisualizer.GenerateAndShowAllPaths();
             }
@@ -80,31 +60,19 @@ public class ARPlacementManager : MonoBehaviour
 
     public void OnStartAnalysisButtonClicked()
     {
-        if (gameUIManager != null)
-        {
-            gameUIManager.StartAnalysis();
-        }
+        if (gameUIManager != null) gameUIManager.StartAnalysis();
     }
 
-    // --- ISceneStateHandler 인터페이스 구현 ---
-
+    // 함수 내용은 그대로 두되, 인터페이스 구현 명시는 제거됨
     public void EnterAnalysisState()
     {
-        // 분석이 시작되면, 터치 입력을 막고 버튼을 숨깁니다.
         this.enabled = false;
-        if (startAnalysisButton != null)
-        {
-            startAnalysisButton.gameObject.SetActive(false);
-        }
+        if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(false);
     }
 
     public void EnterIdleState()
     {
-        // 유휴 상태가 되면, 다시 터치 입력을 허용하고 버튼을 보여줍니다.
         this.enabled = true;
-        if (startAnalysisButton != null)
-        {
-            startAnalysisButton.gameObject.SetActive(placedTargets.Count > 0);
-        }
+        if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(placedTargets.Count > 0);
     }
 }

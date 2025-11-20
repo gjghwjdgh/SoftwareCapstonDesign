@@ -63,7 +63,6 @@
   <ItemGroup>
     <Compile Include="Assets\Script\PathVisualizer.cs" />
     <Compile Include="Assets\Script\PathDrawer.cs" />
-    <Compile Include="Assets\Script\ISceneStateHandler.cs" />
     <Compile Include="Assets\Script\AR\ARMarkerManager.cs" />
     <Compile Include="Assets\Script\Algorithm\PathUtilities.cs" />
     <Compile Include="Assets\Script\ObjectMover\ObjectMover2D.cs" />
@@ -75,6 +74,7 @@
     <Compile Include="Assets\Script\AR\ARPlacementManager.cs" />
     <Compile Include="Assets\Script\UIPursuitMover.cs" />
     <Compile Include="Assets\Script\UILineConnector.cs" />
+    <Compile Include="Assets\Script\SmartPathSolver.cs" />
     <Compile Include="Assets\Script\SceneSwitcher.cs" />
   </ItemGroup>
   <ItemGroup>
