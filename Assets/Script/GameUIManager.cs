@@ -16,7 +16,6 @@ public class GameUIManager : MonoBehaviour
     public PathVisualizer pathVisualizer;
     public PursuitMover pursuitMover3D;
 
-    // ★★★ 여기가 바뀐 부분: 헷갈리지 않게 전용 슬롯 2개를 만듭니다 ★★★
     [Header("씬 담당자 (현재 씬에 맞는 것 하나만 연결, 나머지는 None)")]
     public ARPlacementManager placementManager;
     public ARMarkerManager markerManager;
@@ -26,10 +25,8 @@ public class GameUIManager : MonoBehaviour
 
     [Header("설정")]
     public float travelDuration = 3.0f;
-    [Header("자동 곡률 설정")]
-    public float curvatureStrength = 0.5f;
-    [Header("페이즈(Phase) 배분 설정")]
-    [Range(1, 10)] public int phaseCount = 4;
+
+    // (사용되지 않는 변수는 제거하여 혼란 방지)
     [Header("입력 판별 설정")]
     [Range(0f, 1f)] public float shapeWeight = 0.8f;
     [Range(0f, 1f)] public float velocityWeight = 0.2f;
@@ -55,7 +52,7 @@ public class GameUIManager : MonoBehaviour
     {
         isAnalyzing = true;
 
-        // ★★★ 연결된 매니저가 있으면 실행 (둘 중 하나만 연결되어 있을 테니까요) ★★★
+        // 1. 분석 시작 즉시 매니저 비활성화 (추가 생성 차단)
         if (placementManager != null) placementManager.EnterAnalysisState();
         if (markerManager != null) markerManager.EnterAnalysisState();
 
@@ -69,22 +66,24 @@ public class GameUIManager : MonoBehaviour
             yield break;
         }
 
-        // 1. Solver 계산 (이미 PathVisualizer가 실시간으로 하고 있음)
-        // 데이터를 가져오기만 하면 됨
-        List<PathResultData> solvedPaths = pathVisualizer.LatestSolvedPaths;
+        // ★★★ [중요] 분석 직전에 타겟들을 화면 좌측->우측 순서로 재정렬 ★★★
+        SortTargetsLeftToRight();
 
-        // 만약 데이터가 없다면(혹시 모르니) 강제 계산
-        if (solvedPaths == null || solvedPaths.Count == 0)
-        {
-            solvedPaths = pathSolver.Solve(pathVisualizer.startPoint, pathVisualizer.targets, Camera.main);
-        }
+        // 2. Solver에게 계산 요청 (정렬된 타겟 리스트 사용)
+        // (PathVisualizer가 실시간으로 하고 있지만, 정렬 후 확정된 데이터를 얻기 위해 다시 호출)
+        List<PathResultData> solvedPaths = pathSolver.Solve(
+            pathVisualizer.startPoint,
+            pathVisualizer.targets,
+            Camera.main
+        );
 
-        // 2. 시각화 (이미 되어있음, 생략 가능하거나 Highlight 초기화)
-        pathVisualizer.HighlightPath(-1);
+        // 3. 시각화 업데이트 (계산된 곡선 및 번호 갱신)
+        pathVisualizer.DrawSolvedPaths(solvedPaths);
 
-        // 3. 도우미 출발
+        // 4. 도우미 객체 출발 (계산된 페이즈 위치로 즉시 이동)
         var targetDataMap = new Dictionary<int, (List<Vector2>, List<float>)>();
         int finishedCount = 0;
+
         foreach (var data in solvedPaths)
         {
             pursuitMover3D.StartMovementWithPhase(data.pathPoints, travelDuration, data.phaseValue, data.overrideColor,
@@ -94,7 +93,7 @@ public class GameUIManager : MonoBehaviour
                 });
         }
 
-        // 4. 사용자 입력
+        // 5. 사용자 입력 (터치)
         List<Vector2> userDrawnPath = new List<Vector2>();
         List<float> userDrawnTimes = new List<float>();
 
@@ -109,6 +108,7 @@ public class GameUIManager : MonoBehaviour
         }
 
         if (infoText != null) infoText.text = "그리는 중...";
+
         while (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
         {
             Vector2 touchPosition = Touchscreen.current.primaryTouch.position.ReadValue();
@@ -127,7 +127,7 @@ public class GameUIManager : MonoBehaviour
         yield return new WaitUntil(() => finishedCount >= solvedPaths.Count);
         pursuitMover3D.StopAllMovements();
 
-        // 5. 분석
+        // 6. 분석 및 결과
         if (userDrawnPath.Count < 5)
         {
             if (infoText != null) infoText.text = "입력이 너무 짧습니다.";
@@ -147,8 +147,11 @@ public class GameUIManager : MonoBehaviour
                 float targetAvgSpeed = GestureAnalyser.GetAverageSpeed(path, times);
                 float velocitySim = GestureAnalyser.CalculateVelocitySimilarity(userAverageSpeed, targetAvgSpeed);
 
+                // 정규화 (대각선 길이)
                 float diagLen = Vector2.Distance(path.First(), path.Last());
                 float normFrechet = (diagLen > 1f) ? frechetCost / diagLen : frechetCost;
+
+                // 점수 계산
                 float score = (shapeWeight * normFrechet) + (velocityWeight * (1.0f - velocitySim));
 
                 results.Add((idx, score, frechetCost, velocitySim));
@@ -157,8 +160,21 @@ public class GameUIManager : MonoBehaviour
             if (results.Any())
             {
                 var best = results.OrderBy(r => r.combinedScore).First();
-                if (infoText != null) infoText.text = $"판별 성공: 경로 {best.index + 1}";
+
+                // ★★★ [결과 표시] 시각적 번호(1, 2, 3...) 찾기 ★★★
+                int visualNumber = -1;
+                for (int k = 0; k < solvedPaths.Count; k++)
+                {
+                    if (solvedPaths[k].targetIndex == best.index)
+                    {
+                        visualNumber = k + 1; // 0번부터 시작하니까 +1
+                        break;
+                    }
+                }
+
+                if (infoText != null) infoText.text = $"판별 성공: 경로 {visualNumber}";
                 if (detailText != null) detailText.text = $"오차율: {best.frechet:F2}, 속도: {best.velocity:P0}";
+
                 pathVisualizer.HighlightPath(best.index);
             }
             else
@@ -176,7 +192,6 @@ public class GameUIManager : MonoBehaviour
         if (currentUserTrail != null) { Destroy(currentUserTrail.gameObject); currentUserTrail = null; }
         if (pursuitMover3D != null) pursuitMover3D.StopAllMovements();
 
-        // ★★★ 연결된 매니저를 다시 깨웁니다 ★★★
         if (placementManager != null) placementManager.EnterIdleState();
         if (markerManager != null) markerManager.EnterIdleState();
 
@@ -191,5 +206,19 @@ public class GameUIManager : MonoBehaviour
         if (canvasRectTransform == null) return Vector2.zero;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPosition, null, out Vector2 localPoint);
         return localPoint;
+    }
+
+    // ★★★ 타겟을 화면 X좌표 기준으로 정렬하는 함수 ★★★
+    private void SortTargetsLeftToRight()
+    {
+        Camera cam = Camera.main;
+        if (cam == null || pathVisualizer.targets == null) return;
+
+        pathVisualizer.targets.Sort((a, b) => {
+            if (a == null || b == null) return 0;
+            float screenX_A = cam.WorldToScreenPoint(a.position).x;
+            float screenX_B = cam.WorldToScreenPoint(b.position).x;
+            return screenX_A.CompareTo(screenX_B);
+        });
     }
 }

@@ -68,6 +68,7 @@
     <Compile Include="Assets\Script\ObjectMover\ObjectMover2D.cs" />
     <Compile Include="Assets\Script\Camera\CameraController.cs" />
     <Compile Include="Assets\Script\Algorithm\GestureAnalyser.cs" />
+    <Compile Include="Assets\Script\TargetLabel.cs" />
     <Compile Include="Assets\Script\GameUIManager.cs" />
     <Compile Include="Assets\Script\ObjectMover\ObjectMover3D.cs" />
     <Compile Include="Assets\Script\PursuitMover.cs" />

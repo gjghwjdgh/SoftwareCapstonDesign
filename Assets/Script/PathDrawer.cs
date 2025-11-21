@@ -6,39 +6,43 @@ public class PathDrawer : MonoBehaviour
     public LineRenderer lineRenderer3D;
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
-    private Transform startPoint, target;
 
-    public void InitializeLine(Transform start, Transform target)
-    {
-        this.startPoint = start;
-        this.target = target;
-        lineRenderer3D.positionCount = 2;
-        lineRenderer3D.widthMultiplier = 0.05f;
-        SetHighlight(false);
-    }
+    // ★★★ 외부에서 강제로 지정하는 색상 (그룹 색상 등) ★★★
+    private Color? overrideColor = null;
 
     public void InitializeCurve(List<Vector3> pathPoints)
     {
-        this.startPoint = null; // Update에서 자동 갱신되지 않도록 null로 설정
-        this.target = null;
         lineRenderer3D.positionCount = pathPoints.Count;
         lineRenderer3D.SetPositions(pathPoints.ToArray());
         lineRenderer3D.widthMultiplier = 0.05f;
         SetHighlight(false);
     }
 
-    void Update()
+    // ★★★ 이 함수가 없어서 오류가 났습니다. 추가해주세요! ★★★
+    public void SetColor(Color? color)
     {
-        // startPoint가 할당된 '직선' 모드일 때만 매 프레임 위치를 강제로 다시 잡아줍니다.
-        if (startPoint != null && target != null)
-        {
-            lineRenderer3D.SetPosition(0, startPoint.position);
-            lineRenderer3D.SetPosition(1, target.position);
-        }
+        overrideColor = color;
+        UpdateColor();
     }
 
     public void SetHighlight(bool highlighted)
     {
-        lineRenderer3D.startColor = lineRenderer3D.endColor = highlighted ? highlightColor : normalColor;
+        if (highlighted)
+        {
+            // 하이라이트 될 때는 무조건 형광색(Cyan)
+            lineRenderer3D.startColor = lineRenderer3D.endColor = highlightColor;
+        }
+        else
+        {
+            // 평소에는 지정된 그룹 색상 또는 회색
+            UpdateColor();
+        }
+    }
+
+    private void UpdateColor()
+    {
+        // overrideColor가 있으면(그룹 색상) 그걸 쓰고, 없으면 기본 회색(normalColor) 사용
+        Color finalColor = overrideColor.HasValue ? overrideColor.Value : normalColor;
+        lineRenderer3D.startColor = lineRenderer3D.endColor = finalColor;
     }
 }

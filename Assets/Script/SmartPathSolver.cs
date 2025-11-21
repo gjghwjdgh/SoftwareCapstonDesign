@@ -13,12 +13,12 @@ public class PathResultData
 public class SmartPathSolver : MonoBehaviour
 {
     [Header("시스템 매개변수")]
-    public float AngleThreshold = 10.0f;
-    public float MaxSectorAngle = 45.0f;
-    public float CenterZoneRatio = 0.3f;
-    public float CurveRatioWeak = 0.05f;
-    public float CurveRatioStrong = 0.15f;
-    public int HighDensityCount = 8;
+    public float AngleThreshold = 10.0f;       // 그룹 분할 각도 기준
+    public float MaxSectorAngle = 45.0f;       // 그룹 최대 허용 각도
+    public float CenterZoneRadius = 0.3f;      // 중앙 구역 반지름 비율 (0.0 ~ 0.5)
+    public float CurveRatioWeak = 0.03f;       // 약한 곡선 비율 (2~5%)
+    public float CurveRatioStrong = 0.15f;     // 강한 곡선 비율 (10~15%)
+    public int HighDensityCount = 8;           // 고밀도 판단 개수
 
     private Color[] debugColors = new Color[] {
         Color.red, Color.blue, Color.green, Color.yellow,
@@ -46,12 +46,11 @@ public class SmartPathSolver : MonoBehaviour
     {
         if (cam == null || startPoint == null || targets == null || targets.Count == 0) return new List<PathResultData>();
 
+        // [단계 1] 초기화 및 데이터 수집
         List<TargetMeta> metas = new List<TargetMeta>();
         Vector3 startScreenPos3 = cam.WorldToScreenPoint(startPoint.position);
         Vector2 startScreenPos = new Vector2(startScreenPos3.x, startScreenPos3.y);
-        Vector3 camForward = cam.transform.forward;
-        camForward.y = 0;
-        camForward.Normalize();
+        Vector3 camForward = cam.transform.forward; camForward.y = 0; camForward.Normalize();
 
         for (int i = 0; i < targets.Count; i++)
         {
@@ -76,7 +75,7 @@ public class SmartPathSolver : MonoBehaviour
 
         if (metas.Count == 0) return new List<PathResultData>();
 
-        // 정렬 및 그룹핑
+        // [단계 2] 레이더 스캔 그룹핑
         metas.Sort((a, b) => a.screenAngle.CompareTo(b.screenAngle));
 
         int currentGroupID = 0;
@@ -95,11 +94,7 @@ public class SmartPathSolver : MonoBehaviour
         foreach (var group in groupedMetas)
         {
             List<TargetMeta> members = group.ToList();
-            if (members.Count == 1)
-            {
-                loners.Add(members[0]);
-                members[0].debugColor = Color.white;
-            }
+            if (members.Count == 1) { loners.Add(members[0]); members[0].debugColor = Color.white; }
             else
             {
                 regularGroups.Add(members);
@@ -109,16 +104,19 @@ public class SmartPathSolver : MonoBehaviour
             }
         }
 
-        foreach (var members in regularGroups) AssignPhaseAndPattern(members, startPoint.position, startScreenPos, false, Vector2.zero, cam);
-
-        if (loners.Count > 0)
+        // [단계 3~6] 그룹별 처리 (정규 그룹)
+        foreach (var members in regularGroups)
         {
-            Vector2 globalCentroid = Vector2.zero;
-            foreach (var m in metas) globalCentroid += m.screenPos;
-            globalCentroid /= metas.Count;
-            AssignPhaseAndPattern(loners, startPoint.position, startScreenPos, true, globalCentroid, cam);
+            ProcessGroup(members, startPoint.position, startScreenPos, cam);
         }
 
+        // 외톨이 처리 (가짜 그룹)
+        if (loners.Count > 0)
+        {
+            ProcessGroup(loners, startPoint.position, startScreenPos, cam);
+        }
+
+        // 결과 생성
         List<PathResultData> results = new List<PathResultData>();
         foreach (var m in metas)
         {
@@ -126,7 +124,6 @@ public class SmartPathSolver : MonoBehaviour
             res.targetIndex = m.originalIndex;
             res.phaseValue = m.assignedPhase;
             res.overrideColor = m.debugColor;
-
             if (m.isStraight)
             {
                 res.pathPoints = new List<Vector3>();
@@ -134,7 +131,6 @@ public class SmartPathSolver : MonoBehaviour
             }
             else
             {
-                // PathUtilities 클래스가 있는지 확인해주세요.
                 res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(startPoint.position, m.assignedControlPoint, m.worldPos, 50);
             }
             results.Add(res);
@@ -142,45 +138,79 @@ public class SmartPathSolver : MonoBehaviour
         return results;
     }
 
-    private void AssignPhaseAndPattern(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, bool isLonerGroup, Vector2 globalCentroid, Camera cam)
+    // ★★★ 피드백이 반영된 핵심 처리 함수 ★★★
+    private void ProcessGroup(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
         int N = members.Count;
+
+        // --- [1. 그룹 속성 진단] ---
+        Vector2 groupCenterScreen = Vector2.zero;
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
+
+        foreach (var m in members)
+        {
+            groupCenterScreen += m.screenPos;
+            if (m.screenPos.x < minX) minX = m.screenPos.x;
+            if (m.screenPos.x > maxX) maxX = m.screenPos.x;
+            if (m.screenPos.y < minY) minY = m.screenPos.y;
+            if (m.screenPos.y > maxY) maxY = m.screenPos.y;
+        }
+        groupCenterScreen /= N;
+
+        float screenDiag = new Vector2(Screen.width, Screen.height).magnitude;
+        float groupDiag = new Vector2(maxX - minX, maxY - minY).magnitude;
+        float groupSizeRatio = groupDiag / screenDiag;
+
+        // 고밀도 진단: 개수는 많고(8개 이상) 크기는 작을 때(화면의 20% 미만)
+        bool isHighDensity = (N >= HighDensityCount) && (groupSizeRatio < 0.2f);
+
+        // 구역 진단: 화면 중앙으로부터의 거리 비율
+        Vector2 screenCenter = new Vector2(Screen.width, Screen.height) * 0.5f;
+        float distFromCenter = Vector2.Distance(groupCenterScreen, screenCenter);
+        float maxDist = screenDiag * 0.5f;
+        float normalizedDist = Mathf.Clamp01(distFromCenter / maxDist); // 0.0(중앙) ~ 1.0(구석)
+
+        // --- [2. 페이즈 할당 (규격서 공식)] ---
+        // 길이 긴 순서대로 정렬 (0번이 가장 김)
+        var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
         float M = N + 2.0f;
 
-        // ★ 길이 내림차순 정렬 (긴 놈이 0번)
-        var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
-
-        // ★ 페이즈 할당 공식: (N - k) / (N + 2)
         for (int k = 0; k < N; k++)
         {
+            // 공식: (N - k) / M
+            // k=0 (1등, 긴 경로) -> N/M (후반부)
+            // k=N-1 (꼴등, 짧은 경로) -> 1/M (초반부)
             sortedByLen[k].assignedPhase = (float)(N - k) / M;
         }
 
-        if (!isLonerGroup && N >= HighDensityCount)
+        // --- [3. 예외 처리: 고밀도] ---
+        if (isHighDensity)
         {
             for (int i = 0; i < N; i++)
             {
-                sortedByLen[i].isStraight = true;
-                sortedByLen[i].debugColor = Color.HSVToRGB((float)i / N, 1f, 1f);
+                members[i].isStraight = true;
+                members[i].debugColor = Color.HSVToRGB((float)i / N, 1f, 1f);
             }
             return;
         }
 
-        Vector2 groupCentroid = Vector2.zero;
-        foreach (var m in members) groupCentroid += m.screenPos;
-        groupCentroid /= N;
-        float screenDiag = new Vector2(Screen.width, Screen.height).magnitude;
-        Vector2 refCentroid = isLonerGroup ? globalCentroid : groupCentroid;
-        bool isCenterZone = (Vector2.Distance(startScreenPos, refCentroid) / (screenDiag * 0.5f)) < CenterZoneRatio;
-
-        if (isLonerGroup) ApplyLonerRules(members, startPos, startScreenPos, globalCentroid, cam);
-        else ApplyGroupRules(members, startPos, isCenterZone, cam);
+        // --- [4. 곡선 할당 (상세 규칙)] ---
+        ApplyDetailedCurveRules(members, startPos, cam, normalizedDist);
     }
 
-    private void ApplyGroupRules(List<TargetMeta> members, Vector3 startPos, bool isCenterZone, Camera cam)
+    private void ApplyDetailedCurveRules(List<TargetMeta> members, Vector3 startPos, Camera cam, float zoneDist)
     {
         int count = members.Count;
-        // members는 각도순 정렬 상태 (좌->우)
+        int centerIdx = count / 2;
+
+        // 1. 구역 가중치 (Zone Multiplier)
+        // 중앙이면 0.5배(약하게), 외곽이면 최대 2.5배(강하게)
+        float zoneMultiplier = 1.0f;
+        if (zoneDist < CenterZoneRadius) zoneMultiplier = 0.5f;
+        else zoneMultiplier = Mathf.Lerp(1.0f, 2.5f, (zoneDist - CenterZoneRadius) * 2f);
+
+        // 2. 깊이 정보 (Fountain Effect용)
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
@@ -188,57 +218,72 @@ public class SmartPathSolver : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             TargetMeta m = members[i];
+
+            // 카메라 기준 벡터 준비
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
 
-            Vector3 left = -visualRight;
-            Vector3 right = visualRight;
-            Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
-            Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
+            Vector3 bendVector = Vector3.zero;
+            bool isLeft = (i < centerIdx); // 정렬된 리스트 기준 왼쪽 그룹인가?
 
-            Vector3 bendDir = Vector3.zero;
-            float strength = CurveRatioStrong;
+            // --- [규칙 B: 공간 활용] ---
 
-            int centerIdx = count / 2;
-            if (count >= 3 && i == centerIdx) m.isStraight = true;
+            // 홀수일 때 정중앙은 직선
+            if (count % 2 == 1 && i == centerIdx)
+            {
+                m.isStraight = true;
+            }
+            // 4개 이하: 좌우 공간만 사용 (Lookup Table: 2개, 3개, 4개 상황 포괄)
+            else if (count <= 4)
+            {
+                if (isLeft) bendVector = -visualRight; // 왼쪽
+                else bendVector = visualRight;         // 오른쪽
+            }
+            // 5개 이상: 상하 공간(Twist) 혼합 사용
             else
             {
-                if (i < centerIdx) bendDir = (i % 2 == 0) ? left : upTwist;
-                else bendDir = (i % 2 == 0) ? right : downTwist;
+                if (isLeft) // 왼쪽 그룹
+                {
+                    if (i % 2 == 0) bendVector = -visualRight; // 순수 왼쪽
+                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized; // 위+왼쪽 비틀기
+                }
+                else // 오른쪽 그룹
+                {
+                    // 오른쪽 그룹 내에서의 상대 인덱스
+                    int rightIdx = i - centerIdx;
+                    if (rightIdx % 2 == 0) bendVector = visualRight; // 순수 오른쪽
+                    else bendVector = (-visualUp * 0.8f + visualRight * 0.2f).normalized; // 아래+오른쪽 비틀기
+                }
             }
 
-            if (m == farthest && !m.isStraight) strength *= 1.2f;
-            if (m == closest && !m.isStraight) strength = CurveRatioWeak;
-            if (isCenterZone) strength *= 0.5f; else strength *= 2.0f;
+            // --- [규칙 D: 깊이 우선 할당 & 강도 결정] ---
+            float baseRatio = CurveRatioStrong;
 
+            if (m == closest)
+            {
+                baseRatio = CurveRatioWeak; // 가까운 건 약하게
+                // 홀수 그룹이면 가장 가까운 놈에게 직선 우선권 부여 (중앙이 아니더라도)
+                // (단, 위에서 이미 중앙 인덱스에게 직선을 줬으므로 여기선 약한 곡선으로 유지하거나 덮어쓸 수 있음)
+                // 규격서: "가장 가까운 타겟: 직선 또는 가장 약한 곡선"
+            }
+            else if (m == farthest)
+            {
+                baseRatio = CurveRatioStrong * 1.2f; // 먼 건 더 크게 (Fountain Effect)
+            }
+            else
+            {
+                // 안쪽(중앙 인덱스에 가까운) 경로는 약하게, 바깥쪽은 강하게 차등 적용
+                float distFromIdxCenter = Mathf.Abs(i - (count - 1) / 2.0f);
+                if (distFromIdxCenter < 1.5f) baseRatio = CurveRatioWeak;
+            }
+
+            // 최종 Offset 계산
+            float finalOffset = m.distance3D * baseRatio * zoneMultiplier;
+
+            // 제어점 할당
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
-            m.assignedControlPoint = mid + (bendDir * m.distance3D * strength);
-        }
-    }
-
-    private void ApplyLonerRules(List<TargetMeta> loners, Vector3 startPos, Vector2 startScreenPos, Vector2 globalCentroid, Camera cam)
-    {
-        foreach (var m in loners)
-        {
-            Vector2 centerDir = globalCentroid - startScreenPos;
-            Vector2 myDir = m.screenPos - startScreenPos;
-            float cross = (centerDir.x * myDir.y) - (centerDir.y * myDir.x);
-
-            Vector3 dir = (m.worldPos - startPos).normalized;
-            Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
-            Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
-            Vector3 left = -visualRight; Vector3 right = visualRight;
-            Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
-            Vector3 bendDir;
-            float strength = CurveRatioStrong;
-
-            if (Mathf.Abs(cross) < 50f) { bendDir = upTwist; strength = CurveRatioWeak; }
-            else if (cross > 0) bendDir = left;
-            else bendDir = right;
-
-            Vector3 mid = (startPos + m.worldPos) * 0.5f;
-            m.assignedControlPoint = mid + (bendDir * m.distance3D * strength);
+            m.assignedControlPoint = mid + (bendVector * finalOffset);
         }
     }
 }
