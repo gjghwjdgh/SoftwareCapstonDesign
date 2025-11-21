@@ -35,6 +35,7 @@ public class SmartPathSolver : MonoBehaviour
         public float screenAngle;
         public float screenDist;
         public int groupID = -1;
+
         public float assignedPhase;
         public Vector3 assignedControlPoint;
         public bool isStraight = false;
@@ -48,7 +49,9 @@ public class SmartPathSolver : MonoBehaviour
         List<TargetMeta> metas = new List<TargetMeta>();
         Vector3 startScreenPos3 = cam.WorldToScreenPoint(startPoint.position);
         Vector2 startScreenPos = new Vector2(startScreenPos3.x, startScreenPos3.y);
-        Vector3 camForward = cam.transform.forward; camForward.y = 0; camForward.Normalize();
+        Vector3 camForward = cam.transform.forward;
+        camForward.y = 0;
+        camForward.Normalize();
 
         for (int i = 0; i < targets.Count; i++)
         {
@@ -60,16 +63,20 @@ public class SmartPathSolver : MonoBehaviour
             meta.transform = targets[i];
             meta.worldPos = targets[i].position;
             meta.distance3D = Vector3.Distance(startPoint.position, meta.worldPos);
+
             Vector3 sPos = cam.WorldToScreenPoint(meta.worldPos);
             meta.screenPos = new Vector2(sPos.x, sPos.y);
+
             Vector3 dirToTarget = (meta.worldPos - startPoint.position).normalized;
             dirToTarget.y = 0;
             meta.screenAngle = Vector3.SignedAngle(camForward, dirToTarget, Vector3.up);
+
             metas.Add(meta);
         }
 
         if (metas.Count == 0) return new List<PathResultData>();
 
+        // 정렬 및 그룹핑
         metas.Sort((a, b) => a.screenAngle.CompareTo(b.screenAngle));
 
         int currentGroupID = 0;
@@ -88,7 +95,11 @@ public class SmartPathSolver : MonoBehaviour
         foreach (var group in groupedMetas)
         {
             List<TargetMeta> members = group.ToList();
-            if (members.Count == 1) { loners.Add(members[0]); members[0].debugColor = Color.white; }
+            if (members.Count == 1)
+            {
+                loners.Add(members[0]);
+                members[0].debugColor = Color.white;
+            }
             else
             {
                 regularGroups.Add(members);
@@ -115,6 +126,7 @@ public class SmartPathSolver : MonoBehaviour
             res.targetIndex = m.originalIndex;
             res.phaseValue = m.assignedPhase;
             res.overrideColor = m.debugColor;
+
             if (m.isStraight)
             {
                 res.pathPoints = new List<Vector3>();
@@ -122,6 +134,7 @@ public class SmartPathSolver : MonoBehaviour
             }
             else
             {
+                // PathUtilities 클래스가 있는지 확인해주세요.
                 res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(startPoint.position, m.assignedControlPoint, m.worldPos, 50);
             }
             results.Add(res);
@@ -134,17 +147,13 @@ public class SmartPathSolver : MonoBehaviour
         int N = members.Count;
         float M = N + 2.0f;
 
-        // ★★★ [규격서 공식 적용] 길이 기준 내림차순 정렬 (0번이 가장 긴 놈) ★★★
+        // ★ 길이 내림차순 정렬 (긴 놈이 0번)
         var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
 
+        // ★ 페이즈 할당 공식: (N - k) / (N + 2)
         for (int k = 0; k < N; k++)
         {
-            // 공식: (N - 등수 + 1) / (N + 2)
-            // 코드 k는 0부터 시작하므로 '등수'는 k+1
-            // 식: (N - (k+1) + 1) / M  => (N - k) / M
-
-            float phase = (float)(N - k) / M;
-            sortedByLen[k].assignedPhase = phase;
+            sortedByLen[k].assignedPhase = (float)(N - k) / M;
         }
 
         if (!isLonerGroup && N >= HighDensityCount)
@@ -168,22 +177,26 @@ public class SmartPathSolver : MonoBehaviour
         else ApplyGroupRules(members, startPos, isCenterZone, cam);
     }
 
-    // (ApplyGroupRules, ApplyLonerRules는 이전과 동일하므로 생략 없이 유지)
     private void ApplyGroupRules(List<TargetMeta> members, Vector3 startPos, bool isCenterZone, Camera cam)
     {
         int count = members.Count;
+        // members는 각도순 정렬 상태 (좌->우)
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
+
         for (int i = 0; i < count; i++)
         {
             TargetMeta m = members[i];
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
-            Vector3 left = -visualRight; Vector3 right = visualRight;
+
+            Vector3 left = -visualRight;
+            Vector3 right = visualRight;
             Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
             Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
+
             Vector3 bendDir = Vector3.zero;
             float strength = CurveRatioStrong;
 
@@ -194,9 +207,11 @@ public class SmartPathSolver : MonoBehaviour
                 if (i < centerIdx) bendDir = (i % 2 == 0) ? left : upTwist;
                 else bendDir = (i % 2 == 0) ? right : downTwist;
             }
+
             if (m == farthest && !m.isStraight) strength *= 1.2f;
             if (m == closest && !m.isStraight) strength = CurveRatioWeak;
             if (isCenterZone) strength *= 0.5f; else strength *= 2.0f;
+
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
             m.assignedControlPoint = mid + (bendDir * m.distance3D * strength);
         }
@@ -209,6 +224,7 @@ public class SmartPathSolver : MonoBehaviour
             Vector2 centerDir = globalCentroid - startScreenPos;
             Vector2 myDir = m.screenPos - startScreenPos;
             float cross = (centerDir.x * myDir.y) - (centerDir.y * myDir.x);
+
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
@@ -216,9 +232,11 @@ public class SmartPathSolver : MonoBehaviour
             Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
             Vector3 bendDir;
             float strength = CurveRatioStrong;
+
             if (Mathf.Abs(cross) < 50f) { bendDir = upTwist; strength = CurveRatioWeak; }
             else if (cross > 0) bendDir = left;
             else bendDir = right;
+
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
             m.assignedControlPoint = mid + (bendDir * m.distance3D * strength);
         }

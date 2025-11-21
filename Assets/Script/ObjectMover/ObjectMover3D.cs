@@ -5,16 +5,22 @@ using System.Linq;
 
 public class ObjectMover3D : MonoBehaviour
 {
-    // 페이즈 위치를 정확히 반영하기 위해 Linear 사용 (0.5는 정확히 50% 지점)
     public AnimationCurve speedCurve = AnimationCurve.Linear(0, 0, 1, 1);
     private bool shouldLoop = true;
 
     public void StopMovement() { shouldLoop = false; }
 
-    // ★★★ 외부에서 강제로 위치를 잡는 함수 (생성 즉시 호출용) ★★★
-    public void ForceSetPosition(List<Vector3> path, float rawProgress)
+    // ★★★ PursuitMover가 호출하는 초기화 함수 추가 ★★★
+    // 코루틴 시작 전에 즉시 위치를 잡기 위해 외부에서 호출합니다.
+    public void ForceSetPosition(List<Vector3> path, float startPhase)
     {
-        UpdatePosition(path, rawProgress);
+        // 시간 비율 0.0일 때의 위치(즉, StartPhase 위치)로 이동
+        UpdatePositionMapped(path, 0f, startPhase);
+    }
+
+    public IEnumerator MoveAlongPath(List<Vector3> path, float duration, System.Action<List<Vector2>, List<float>> onComplete)
+    {
+        return MoveAlongPathWithPhase(path, duration, 0f, onComplete);
     }
 
     public IEnumerator MoveAlongPathWithPhase(List<Vector3> path, float duration, float startPhase, System.Action<List<Vector2>, List<float>> onComplete)
@@ -24,18 +30,18 @@ public class ObjectMover3D : MonoBehaviour
         Camera mainCamera = Camera.main;
         bool hasCompletedOnce = false;
 
-        float currentProgress = startPhase;
+        float timer = 0f;
 
-        // 여기서도 한번 더 확실하게 위치 세팅
-        UpdatePosition(path, currentProgress);
+        // 코루틴 시작 시점에도 위치를 확실히 잡음
+        UpdatePositionMapped(path, 0f, startPhase);
 
         while (shouldLoop)
         {
-            currentProgress += Time.deltaTime / duration;
+            timer += Time.deltaTime;
 
-            if (currentProgress >= 1.0f)
+            if (timer >= duration)
             {
-                currentProgress %= 1.0f;
+                timer %= duration;
 
                 if (!hasCompletedOnce)
                 {
@@ -49,7 +55,10 @@ public class ObjectMover3D : MonoBehaviour
                 }
             }
 
-            UpdatePosition(path, currentProgress);
+            float timeRatio = timer / duration;
+
+            // 0~1 시간을 StartPhase~1 구간으로 맵핑하여 이동
+            UpdatePositionMapped(path, timeRatio, startPhase);
 
             if (!hasCompletedOnce)
             {
@@ -76,5 +85,12 @@ public class ObjectMover3D : MonoBehaviour
         {
             transform.position = Vector3.Lerp(path[idx], path[nextIdx], t);
         }
+    }
+
+    private void UpdatePositionMapped(List<Vector3> path, float timeRatio, float startPhase)
+    {
+        // timeRatio(0~1)를 startPhase~1.0 사이의 값으로 변환
+        float mappedProgress = Mathf.Lerp(startPhase, 1.0f, timeRatio);
+        UpdatePosition(path, mappedProgress);
     }
 }
