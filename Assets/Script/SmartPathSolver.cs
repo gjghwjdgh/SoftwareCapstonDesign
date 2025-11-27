@@ -14,9 +14,11 @@ public class PathResultData
 public class SmartPathSolver : MonoBehaviour
 {
     [Header("1. 그룹핑 설정")]
+    [Tooltip("이 각도 범위(도) 안에 있어야 검사 대상이 됩니다.")]
     public float AngleThreshold = 15.0f;
-    public float MaxScreenDistRatio = 0.2f;
-    public float MaxGroupSpanAngle = 45.0f; // 추가된 기능: 그룹 최대 각도
+
+    [Tooltip("화면상 거리가 (화면폭 x 이 비율) 이내여야 연결합니다.")]
+    public float MaxScreenDistRatio = 0.2f; // 예: 화면폭의 20%
 
     [Header("2. 곡선 및 구역 설정")]
     public float CenterZoneRadius = 0.3f;
@@ -44,7 +46,7 @@ public class SmartPathSolver : MonoBehaviour
         public float distance3D;
         public float rawAngle;
         public float relativeAngle;
-        public int parentID;
+        public int parentID; // Union-Find용
         public float assignedPhase;
         public Vector3 assignedControlPoint;
         public bool isStraight = false;
@@ -54,7 +56,9 @@ public class SmartPathSolver : MonoBehaviour
     private List<TargetMeta> debugMetas = new List<TargetMeta>();
     private Vector3 debugStartPos;
 
-    // 메인 함수
+    // =================================================================================
+    // [메인 함수] Solve
+    // =================================================================================
     public List<PathResultData> Solve(Transform startPoint, List<Transform> targets, Camera cam)
     {
         LogToUI("\n──────── [스마트 경로 분석 시작] ────────");
@@ -90,7 +94,6 @@ public class SmartPathSolver : MonoBehaviour
             meta.worldPos = targets[i].position;
             meta.distance3D = Vector3.Distance(startPoint.position, meta.worldPos);
 
-            // [수정됨] sPos 변수 정의 추가
             Vector3 sPos = cam.WorldToScreenPoint(meta.worldPos);
             meta.screenPos = new Vector2(sPos.x, sPos.y);
 
@@ -101,11 +104,7 @@ public class SmartPathSolver : MonoBehaviour
             metas.Add(meta);
         }
 
-        if (metas.Count == 0)
-        {
-            LogToUI("결과: 타겟 없음.");
-            return new List<PathResultData>();
-        }
+        if (metas.Count == 0) return new List<PathResultData>();
 
         // 2. 정렬 (각도 순서)
         metas.Sort((a, b) => b.rawAngle.CompareTo(a.rawAngle));
@@ -119,66 +118,67 @@ public class SmartPathSolver : MonoBehaviour
 
         for (int i = 0; i < metas.Count; i++) metas[i].parentID = i;
 
-        // 3. 그룹핑 로직 (Greedy Chain + Span검사 + 원형연결)
+        // ---------------------------------------------------------
+        // [단계 3] 그룹핑 로직 (상세 로그 & 체인 연결)
+        // ---------------------------------------------------------
         float distLimitPx = screenWidth * MaxScreenDistRatio;
-        LogToUI($"[그룹핑 기준] 각도 {AngleThreshold}° / 거리 {distLimitPx:F0}px / 최대폭 {MaxGroupSpanAngle}°");
 
+        LogToUI($"[그룹핑 기준] 각도범위 {AngleThreshold}° / 거리제한 {distLimitPx:F0}px");
+        LogToUI("--- 상세 과정 ---");
+
+        // i: 기준 타겟 (왼쪽부터 차례대로)
         for (int i = 0; i < metas.Count; i++)
         {
             TargetMeta A = metas[i];
+            bool foundConnection = false; // 연결했는지 확인용
 
+            // j: 내 오른쪽(뒤)에 있는 후보들 탐색
             for (int j = i + 1; j < metas.Count; j++)
             {
                 TargetMeta B = metas[j];
 
-                // A. 인접 각도 검사
+                // 1. 각도 차이 계산
                 float angleDiff = Mathf.Abs(Mathf.DeltaAngle(A.relativeAngle, B.relativeAngle));
-                if (angleDiff > AngleThreshold) break;
 
-                // B. 그룹 전체 폭(Span) 검사
-                float spanDiff = Mathf.Abs(Mathf.DeltaAngle(A.relativeAngle, B.relativeAngle));
-                if (spanDiff > MaxGroupSpanAngle)
+                // [검사 1] 각도 범위 밖인가?
+                if (angleDiff > AngleThreshold)
                 {
-                    LogToUI($"[{A.visualID}] vs [{B.visualID}] -> [중단] 그룹폭 초과 ({spanDiff:F1}°)");
+                    // 정렬되어 있으므로, 여기서 각도가 멀어지면 그 뒤는 볼 필요 없음
+                    // LogToUI($"[{A.visualID}] 검사 중단 -> [{B.visualID}]부터 각도({angleDiff:F1}°) 벗어남.");
                     break;
                 }
 
-                // C. 거리 검사
+                // [검사 2] 거리 계산
                 float distPx = Vector2.Distance(A.screenPos, B.screenPos);
-                string logMsg = $"[{A.visualID}] vs [{B.visualID}] : 각도 {angleDiff:F1}° / 거리 {distPx:F0}px";
 
                 if (distPx <= distLimitPx)
                 {
+                    // ★ 조건 충족: 연결!
                     UnionGroups(metas, i, j);
-                    logMsg += " -> <color=green>[연결 성공]</color>";
-                    LogToUI(logMsg);
+
+                    LogToUI($"[{A.visualID}] -> [{B.visualID}] <color=green>[연결 성공]</color>");
+                    LogToUI($"   └ (각도 {angleDiff:F1}° / 거리 {distPx:F0}px)");
+
+                    foundConnection = true;
+                    // ★ 하나라도 연결되면 A에 대한 탐색 종료 (다음 인덱스 i+1로 이동)
                     break;
                 }
                 else
                 {
-                    logMsg += " -> <color=orange>[패스: 거리 멂]</color>";
-                    LogToUI(logMsg);
+                    // ★ 조건 불충족: 거리가 멂 (건너뛰기)
+                    // 연결은 안 하지만, 각도 범위 내에 있으므로 다음 후보(j+1)를 계속 확인해야 함
+                    LogToUI($"[{A.visualID}] -> [{B.visualID}] <color=orange>[패스]</color> (거리 멂: {distPx:F0}px)");
                 }
             }
-        }
 
-        // 3.5 원형 연결 검사 (Circular Check)
-        if (metas.Count > 1)
-        {
-            TargetMeta First = metas[0];
-            TargetMeta Last = metas[metas.Count - 1];
-
-            float circleAngleDiff = 360f - Mathf.Abs(First.rawAngle - Last.rawAngle);
-            float circleDistPx = Vector2.Distance(First.screenPos, Last.screenPos);
-
-            if (circleAngleDiff <= AngleThreshold && circleDistPx <= distLimitPx)
+            if (!foundConnection)
             {
-                UnionGroups(metas, 0, metas.Count - 1);
-                LogToUI($"[원형 연결] [{Last.visualID}] <-> [{First.visualID}] 연결됨 (각도 {circleAngleDiff:F1}°)");
+                // 아무랑도 연결 안 됐으면 (각도 범위 내에 아무도 없거나, 다 거리가 멀었음)
+                // LogToUI($"[{A.visualID}] -> 연결 대상 없음 (외톨이 가능성)");
             }
         }
 
-        // 4. 그룹 정리
+        // 3.5 그룹 정리
         Dictionary<int, List<TargetMeta>> groupDict = new Dictionary<int, List<TargetMeta>>();
         for (int i = 0; i < metas.Count; i++)
         {
@@ -190,10 +190,12 @@ public class SmartPathSolver : MonoBehaviour
         List<List<TargetMeta>> finalGroups = groupDict.Values.ToList();
         debugMetas = metas;
 
+        // 그룹 결과 요약 출력
         LogToUI($"\n[최종 결과] 총 {finalGroups.Count}개 그룹 확정");
         for (int g = 0; g < finalGroups.Count; g++)
         {
-            string members = string.Join(", ", finalGroups[g].Select(m => m.visualID));
+            var grp = finalGroups[g];
+            string members = string.Join(", ", grp.Select(m => m.visualID));
             LogToUI($"  • 그룹 {g + 1}: [{members}]");
         }
 
@@ -223,7 +225,6 @@ public class SmartPathSolver : MonoBehaviour
             }
             else
             {
-                // PathUtilities 클래스가 프로젝트에 포함되어 있어야 합니다.
                 res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(
                     startPoint.position, m.assignedControlPoint, m.worldPos, 20);
             }
@@ -235,7 +236,9 @@ public class SmartPathSolver : MonoBehaviour
     private int FindRoot(List<TargetMeta> metas, int index)
     {
         if (metas[index].parentID != index)
+        {
             metas[index].parentID = FindRoot(metas, metas[index].parentID);
+        }
         return metas[index].parentID;
     }
 
@@ -243,26 +246,29 @@ public class SmartPathSolver : MonoBehaviour
     {
         int rootA = FindRoot(metas, indexA);
         int rootB = FindRoot(metas, indexB);
-        if (rootA != rootB) metas[rootB].parentID = rootA;
+        if (rootA != rootB)
+        {
+            metas[rootB].parentID = rootA;
+        }
     }
 
     private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
         int N = members.Count;
 
-        // 1. 페이즈 할당
         var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
         float M = N + 2.0f;
-        for (int k = 0; k < N; k++) sortedByLen[k].assignedPhase = (float)(N - k) / M;
+        for (int k = 0; k < N; k++)
+        {
+            sortedByLen[k].assignedPhase = (float)(N - k) / M;
+        }
 
-        // 2. 고밀도 예외
         float minX = members.Min(m => m.screenPos.x);
         float maxX = members.Max(m => m.screenPos.x);
         float widthRatio = (maxX - minX) / Screen.width;
 
         if (N >= HighDensityCount && widthRatio < 0.2f)
         {
-            LogToUI($"  >> [고밀도] {N}개 밀집 -> 직선화");
             for (int i = 0; i < N; i++)
             {
                 members[i].isStraight = true;
@@ -271,96 +277,55 @@ public class SmartPathSolver : MonoBehaviour
             return;
         }
 
-        // 3. 구역 가중치
         float avgRelAngle = members.Average(m => m.relativeAngle);
         float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
         float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
 
-        // 4. 깊이 정보
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
+        int centerIdx = N / 2;
 
-        // 5. 배치 시나리오
         for (int i = 0; i < N; i++)
         {
             TargetMeta m = members[i];
-
             Vector3 dir = (m.worldPos - startPos).normalized;
-            Vector3 vRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
-            Vector3 vUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
+            Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
+            Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
+            Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
+            Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
 
-            Vector3 left = -vRight;
-            Vector3 right = vRight;
-            Vector3 upTwist = (vUp * 0.8f + vRight * 0.2f).normalized;
-            Vector3 downTwist = (-vUp * 0.8f + vRight * 0.2f).normalized;
+            Vector3 bendVector = Vector3.zero;
+            bool isLeftInGroup = (i < centerIdx);
 
-            Vector3 bendDir = Vector3.zero;
-            bool forceStraight = false;
-            float strength = CurveRatioStrong;
-
-            if (N == 2)
+            if (N % 2 == 1 && i == centerIdx) m.isStraight = true;
+            else if (N <= 4)
             {
-                if (i == 0) bendDir = left;
-                else bendDir = right;
-            }
-            else if (N == 3)
-            {
-                if (i == 0) bendDir = left;
-                else if (i == 1)
-                {
-                    if (m == closest) forceStraight = true;
-                    else forceStraight = true;
-                }
-                else bendDir = right;
-            }
-            else if (N == 4)
-            {
-                if (i == 0) { bendDir = left; strength *= 1.2f; }
-                else if (i == 1) { bendDir = left; strength *= 0.5f; }
-                else if (i == 2) { bendDir = right; strength *= 0.5f; }
-                else { bendDir = right; strength *= 1.2f; }
+                if (isLeftInGroup) bendVector = -visualRight;
+                else bendVector = visualRight;
             }
             else
             {
-                int centerIdx = N / 2;
-                if (i == centerIdx)
+                if (isLeftInGroup)
                 {
-                    if (N % 2 == 1) forceStraight = true;
-                    else bendDir = (i % 2 == 0) ? left : right;
-                }
-                else if (i < centerIdx)
-                {
-                    if (i % 2 == 0) bendDir = left;
-                    else bendDir = (vUp * 0.8f - vRight * 0.2f).normalized;
+                    if (i % 2 == 0) bendVector = -visualRight;
+                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized;
                 }
                 else
                 {
-                    if (i % 2 == 0) bendDir = right;
-                    else bendDir = downTwist;
+                    int rIdx = i - centerIdx;
+                    if (rIdx % 2 == 0) bendVector = visualRight;
+                    else bendVector = downTwist;
                 }
             }
 
-            if (m == closest && !forceStraight)
-            {
-                strength = CurveRatioWeak;
-                if (N % 2 == 1) forceStraight = true;
-            }
-            else if (m == farthest && !forceStraight)
-            {
-                strength = CurveRatioStrong * 1.5f;
-            }
+            float ratio = CurveRatioStrong;
+            if (m == closest) { ratio = CurveRatioWeak; if (N % 2 == 1) m.isStraight = true; }
+            else if (m == farthest) ratio = CurveRatioStrong * 1.2f;
 
-            if (forceStraight)
-            {
-                m.isStraight = true;
-            }
-            else
-            {
-                float finalOffset = m.distance3D * strength * zoneMultiplier;
-                Vector3 mid = (startPos + m.worldPos) * 0.5f;
-                m.assignedControlPoint = mid + (bendDir * finalOffset);
-            }
+            float finalOffset = m.distance3D * ratio * zoneMultiplier;
+            Vector3 mid = (startPos + m.worldPos) * 0.5f;
+            m.assignedControlPoint = mid + (bendVector * finalOffset);
         }
     }
 
