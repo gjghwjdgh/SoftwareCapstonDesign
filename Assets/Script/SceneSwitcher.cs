@@ -1,13 +1,13 @@
-// SceneSwitcher.cs (ÀüÃ¼ ÄÚµå)
+ï»¿// SceneSwitcher.cs (ì „ì²´ ì½”ë“œ)
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class SceneSwitcher : MonoBehaviour
 {
-    // ÅÍÄ¡ ±â¹İ ¾ÀÀÇ ÀÌ¸§ ¶Ç´Â ºôµå ÀÎµ¦½º
+    // í„°ì¹˜ ê¸°ë°˜ ì”¬ì˜ ì´ë¦„ ë˜ëŠ” ë¹Œë“œ ì¸ë±ìŠ¤
     public string touchSceneName = "AR_Scene";
 
-    // ¸¶Ä¿ ±â¹İ ¾ÀÀÇ ÀÌ¸§ ¶Ç´Â ºôµå ÀÎµ¦½º
+    // ë§ˆì»¤ ê¸°ë°˜ ì”¬ì˜ ì´ë¦„ ë˜ëŠ” ë¹Œë“œ ì¸ë±ìŠ¤
     public string markerSceneName = "AR_Marker_Scene";
 
     public void SwitchToTouchScene()
@@ -20,7 +20,7 @@ public class SceneSwitcher : MonoBehaviour
         SceneManager.LoadScene(markerSceneName);
     }
 
-    // ÇöÀç ¾À¿¡ µû¶ó ´Ù¸¥ ¾ÀÀ¸·Î ÀüÈ¯ÇÏ´Â Åä±Û ÇÔ¼ö
+    // í˜„ì¬ ì”¬ì— ë”°ë¼ ë‹¤ë¥¸ ì”¬ìœ¼ë¡œ ì „í™˜í•˜ëŠ” í† ê¸€ í•¨ìˆ˜
     public void SwapMode()
     {
         string currentSceneName = SceneManager.GetActiveScene().name;

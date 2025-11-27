@@ -1,8 +1,8 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro; // í…ìŠ¤íŠ¸ ì½ê¸° ìœ„í•´ í•„ìˆ˜
 
-// °á°ú µ¥ÀÌÅÍ ±¸Á¶Ã¼
 public class PathResultData
 {
     public int targetIndex;
@@ -13,31 +13,31 @@ public class PathResultData
 
 public class SmartPathSolver : MonoBehaviour
 {
-    [Header("1. ±×·ìÇÎ ¼³Á¤")]
+    [Header("1. ê·¸ë£¹í•‘ ì„¤ì • (ë ˆì´ë” ìŠ¤ìº”)")]
     public float AngleThreshold = 15.0f;
     public float MaxGroupSpanAngle = 45.0f;
 
-    [Header("2. °î¼± ¹× ±¸¿ª ¼³Á¤")]
+    [Header("2. ê³¡ì„  ê°•ë„ ë° êµ¬ì—­ ì„¤ì •")]
     public float CenterZoneRadius = 0.3f;
     public float CurveRatioWeak = 0.05f;
     public float CurveRatioStrong = 0.15f;
 
-    [Header("3. ¿¹¿Ü Ã³¸®")]
+    [Header("3. ì˜ˆì™¸ ì²˜ë¦¬")]
     public int HighDensityCount = 8;
 
-    [Header("µğ¹ö±×")]
+    [Header("ë””ë²„ê·¸")]
     public bool showDebugGizmos = true;
 
-    // µğ¹ö±×¿ë »ö»ó
     private Color[] debugColors = new Color[] {
         Color.red, Color.blue, Color.green, Color.yellow,
         Color.cyan, Color.magenta, new Color(1, 0.5f, 0)
     };
 
-    // ³»ºÎ µ¥ÀÌÅÍ Å¬·¡½º
+    // ë‚´ë¶€ ë°ì´í„° í´ë˜ìŠ¤
     private class TargetMeta
     {
         public int originalIndex;
+        public string visualID; // â˜… í™”ë©´ì— ì íŒ ë²ˆí˜¸ (í…ìŠ¤íŠ¸)
         public Transform transform;
         public Vector3 worldPos;
         public Vector2 screenPos;
@@ -55,13 +55,13 @@ public class SmartPathSolver : MonoBehaviour
     private Vector3 debugStartPos;
 
     // =================================================================================
-    // [¸ŞÀÎ ÇÔ¼ö] Solve
+    // [ë©”ì¸ í•¨ìˆ˜] Solve
     // =================================================================================
     public List<PathResultData> Solve(Transform startPoint, List<Transform> targets, Camera cam)
     {
-        // 1. ·Î±× ½ÃÀÛ
+        // 1. ë¡œê·¸ ì‹œì‘
         LogToUI("\n==================================");
-        LogToUI($"[¾Ë°í¸®Áò »ó¼¼ ºĞ¼® ½ÃÀÛ] Å¸°Ù {targets.Count}°³");
+        LogToUI($"[ì•Œê³ ë¦¬ì¦˜ ìƒì„¸ ë¶„ì„ ì‹œì‘] íƒ€ê²Ÿ {targets.Count}ê°œ");
 
         if (cam == null || startPoint == null || targets == null || targets.Count == 0)
             return new List<PathResultData>();
@@ -71,20 +71,32 @@ public class SmartPathSolver : MonoBehaviour
         Vector2 startScreenPos = new Vector2(startScreenPos3.x, startScreenPos3.y);
         debugStartPos = startPoint.position;
 
-        // 2. µ¥ÀÌÅÍ ¼öÁı ¹× °¢µµ °è»ê
+        // 2. ë°ì´í„° ìˆ˜ì§‘ ë° ID ì‹ë³„
         for (int i = 0; i < targets.Count; i++)
         {
             if (targets[i] == null) continue;
 
-            // ÀÔ±¸ ÄÆ (Ä«¸Ş¶ó µÚ)
+            // â˜…â˜…â˜… [ID ì‹ë³„ ë¡œì§] íƒ€ê²Ÿì— ì íŒ í…ìŠ¤íŠ¸ ì½ì–´ì˜¤ê¸° â˜…â˜…â˜…
+            string idStr = targets[i].name; // ê¸°ë³¸ê°’ì€ ì˜¤ë¸Œì íŠ¸ ì´ë¦„
+
+            // TargetLabelì´ë‚˜ TextMeshPro ì»´í¬ë„ŒíŠ¸ë¥¼ ì°¾ì•„ì„œ í…ìŠ¤íŠ¸ ë‚´ìš©ì„ ê°€ì ¸ì˜´
+            var textComponent = targets[i].GetComponentInChildren<TMP_Text>();
+            if (textComponent != null && !string.IsNullOrEmpty(textComponent.text))
+            {
+                idStr = textComponent.text; // ì˜ˆ: "1", "2"
+            }
+            // -------------------------------------------------------
+
+            // ì…êµ¬ ì»· (ì¹´ë©”ë¼ ë’¤ìª½ ì œì™¸)
             if (cam.WorldToViewportPoint(targets[i].position).z <= 0)
             {
-                LogToUI($"[Á¦¿Ü] Å¸°Ù {i}¹ø: Ä«¸Ş¶ó µÚÂÊ¿¡ ÀÖÀ½.");
+                LogToUI($"[ì œì™¸] íƒ€ê²Ÿ [{idStr}]: ì¹´ë©”ë¼ ë’¤ìª½ì— ìˆìŒ.");
                 continue;
             }
 
             TargetMeta meta = new TargetMeta();
             meta.originalIndex = i;
+            meta.visualID = idStr; // ì‹ë³„ëœ ID ì €ì¥
             meta.transform = targets[i];
             meta.worldPos = targets[i].position;
             meta.distance3D = Vector3.Distance(startPoint.position, meta.worldPos);
@@ -92,7 +104,7 @@ public class SmartPathSolver : MonoBehaviour
             Vector3 sPos = cam.WorldToScreenPoint(meta.worldPos);
             meta.screenPos = new Vector2(sPos.x, sPos.y);
 
-            // Àı´ë °¢µµ °è»ê
+            // ì ˆëŒ€ ê°ë„ ê³„ì‚°
             Vector2 dir = meta.screenPos - startScreenPos;
             meta.rawAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 
@@ -101,12 +113,12 @@ public class SmartPathSolver : MonoBehaviour
 
         if (metas.Count == 0)
         {
-            LogToUI("[Á¾·á] À¯È¿ÇÑ Å¸°ÙÀÌ ÇÏ³ªµµ ¾ø½À´Ï´Ù.");
+            LogToUI("[ì¢…ë£Œ] ìœ íš¨í•œ íƒ€ê²Ÿì´ í•˜ë‚˜ë„ ì—†ìŠµë‹ˆë‹¤.");
             return new List<PathResultData>();
         }
 
-        // 3. Á¤·Ä ¹× µ¿Àû Áß½É ¼³Á¤
-        // 1Â÷ Á¤·Ä: Àı´ë °¢µµ ±âÁØ ³»¸²Â÷¼ø (È­¸é ¿ŞÂÊ -> ¿À¸¥ÂÊ)
+        // 3. ì •ë ¬ ë° ë™ì  ì¤‘ì‹¬ ì„¤ì •
+        // 1ì°¨ ì •ë ¬: ì ˆëŒ€ ê°ë„ ê¸°ì¤€ ë‚´ë¦¼ì°¨ìˆœ (í™”ë©´ ì™¼ìª½ 180ë„ -> ì˜¤ë¥¸ìª½ 0ë„)
         metas.Sort((a, b) => b.rawAngle.CompareTo(a.rawAngle));
 
         float centerOffsetAngle = 0f;
@@ -114,18 +126,18 @@ public class SmartPathSolver : MonoBehaviour
         {
             int midIndex = metas.Count / 2;
             centerOffsetAngle = metas[midIndex].rawAngle;
-            LogToUI($"[±âÁØÁ¡ ¼³Á¤] Áß°£ Å¸°Ù({metas[midIndex].originalIndex}¹ø)ÀÇ °¢µµ {centerOffsetAngle:F1}µµ¸¦ 0µµ·Î ¼³Á¤.");
+            LogToUI($"[ê¸°ì¤€ì  ì„¤ì •] ì¤‘ê°„ íƒ€ê²Ÿ([{metas[midIndex].visualID}])ì˜ ê°ë„ {centerOffsetAngle:F1}ë„ë¥¼ 0ë„ë¡œ ë³´ì •.");
         }
 
-        // »ó´ë °¢µµ °è»ê ¹× 2Â÷ Á¤·Ä
+        // ìƒëŒ€ ê°ë„ ê³„ì‚° ë° 2ì°¨ ì •ë ¬ (ì™¼ìª½ -> ì˜¤ë¥¸ìª½ ìˆœì„œ ë³´ì¥)
         foreach (var m in metas)
         {
             m.relativeAngle = Mathf.DeltaAngle(centerOffsetAngle, m.rawAngle);
         }
         metas.Sort((a, b) => b.relativeAngle.CompareTo(a.relativeAngle));
 
-        // 4. [ÇÙ½É] »ó¼¼ ±×·ìÇÎ ·Î±× Ãâ·Â
-        LogToUI("--- [±×·ìÇÎ ÆÇº° ·ÎÁ÷] ---");
+        // 4. [í•µì‹¬] ìƒì„¸ ê·¸ë£¹í•‘ ë¡œê·¸ ì¶œë ¥
+        LogToUI("--- [ê·¸ë£¹í•‘ íŒë³„ ë¡œì§] ---");
 
         List<List<TargetMeta>> finalGroups = new List<List<TargetMeta>>();
 
@@ -134,46 +146,41 @@ public class SmartPathSolver : MonoBehaviour
             List<TargetMeta> currentGroup = new List<TargetMeta>();
             currentGroup.Add(metas[0]);
 
-            // Ã¹ Å¸°Ù ·Î±×
-            LogToUI($"¢º ±×·ì ½ÃÀÛ: Å¸°Ù {metas[0].originalIndex} (»ó´ë°¢: {metas[0].relativeAngle:F1}µµ)");
+            // ì²« íƒ€ê²Ÿ ë¡œê·¸
+            LogToUI($"â–¶ ê·¸ë£¹ ì‹œì‘: íƒ€ê²Ÿ [{metas[0].visualID}] (ìƒëŒ€ê°: {metas[0].relativeAngle:F1}ë„)");
 
             for (int i = 1; i < metas.Count; i++)
             {
                 TargetMeta current = metas[i];
                 TargetMeta prev = currentGroup.Last();
 
-                // ÆÇº° º¯¼ö °è»ê
                 float gap = Mathf.Abs(Mathf.DeltaAngle(prev.relativeAngle, current.relativeAngle));
                 float totalSpan = Mathf.Abs(Mathf.DeltaAngle(currentGroup[0].relativeAngle, current.relativeAngle));
 
-                string logMsg = $"   ¦¦ Å¸°Ù {current.originalIndex} (»ó´ë°¢: {current.relativeAngle:F1}µµ)";
+                string logMsg = $"   â”” íƒ€ê²Ÿ [{current.visualID}] ({current.relativeAngle:F1}ë„)";
 
-                // ÆÇ´Ü ·ÎÁ÷
                 bool isConnected = false;
+                // ì—°ê²° ì¡°ê±´: ê°„ê²©ì´ ì¢ê³ (Threshold) && ì „ì²´ê°€ ë„ˆë¬´ í¬ì§€ ì•Šì„ ë•Œ(Span)
                 if (gap <= AngleThreshold && totalSpan <= MaxGroupSpanAngle)
                 {
                     isConnected = true;
-                    logMsg += $" -> [¿¬°á] (Gap: {gap:F1} <= {AngleThreshold})";
+                    logMsg += $" -> [ì—°ê²°] (Gap: {gap:F1} <= {AngleThreshold})";
                     currentGroup.Add(current);
                 }
                 else
                 {
                     isConnected = false;
-                    // ¿Ö ²÷°å´ÂÁö ÀÌÀ¯ Ãâ·Â
                     if (gap > AngleThreshold)
-                        logMsg += $" -> [ºĞ¸®] »çÀ¯: ¿· Ä£±¸¿Í ³Ê¹« ¸× (Gap: {gap:F1} > {AngleThreshold})";
+                        logMsg += $" -> [ë¶„ë¦¬] ì‚¬ìœ : ê°„ê²©ì´ ë„ˆë¬´ ë©‚ (Gap: {gap:F1})";
                     else
-                        logMsg += $" -> [ºĞ¸®] »çÀ¯: ±×·ìÀÌ ³Ê¹« ¶×¶×ÇÔ (Span: {totalSpan:F1} > {MaxGroupSpanAngle})";
+                        logMsg += $" -> [ë¶„ë¦¬] ì‚¬ìœ : ê·¸ë£¹ì´ ë„ˆë¬´ ì»¤ì§ (Span: {totalSpan:F1})";
 
-                    LogToUI(logMsg); // ²÷±ä ·Î±× Ãâ·Â
+                    LogToUI(logMsg);
 
-                    // ±âÁ¸ ±×·ì È®Á¤
                     finalGroups.Add(currentGroup);
-
-                    // »õ ±×·ì ½ÃÀÛ
                     currentGroup = new List<TargetMeta>();
                     currentGroup.Add(current);
-                    LogToUI($"¢º »õ ±×·ì ½ÃÀÛ: Å¸°Ù {current.originalIndex}");
+                    LogToUI($"â–¶ ìƒˆ ê·¸ë£¹ ì‹œì‘: íƒ€ê²Ÿ [{current.visualID}]");
                 }
 
                 if (isConnected) LogToUI(logMsg);
@@ -182,9 +189,9 @@ public class SmartPathSolver : MonoBehaviour
         }
 
         debugMetas = metas;
-        LogToUI($"[°á°ú] ÃÑ {finalGroups.Count}°³ÀÇ ±×·ìÀÌ »ı¼ºµÇ¾ú½À´Ï´Ù.\n");
+        LogToUI($"[ê²°ê³¼] ì´ {finalGroups.Count}ê°œì˜ ê·¸ë£¹ì´ ìƒì„±ë˜ì—ˆìŠµë‹ˆë‹¤.\n");
 
-        // 5. ±×·ìº° °î¼± Ã³¸®
+        // 5. ê·¸ë£¹ë³„ ê³¡ì„  ì²˜ë¦¬
         int colorIdx = 0;
         foreach (var group in finalGroups)
         {
@@ -195,7 +202,7 @@ public class SmartPathSolver : MonoBehaviour
             ProcessGroupRules(group, startPoint.position, startScreenPos, cam);
         }
 
-        // 6. ÃÖÁ¾ °á°ú ¹İÈ¯
+        // 6. ê²°ê³¼ ìƒì„±
         List<PathResultData> results = new List<PathResultData>();
         foreach (var m in metas)
         {
@@ -210,6 +217,7 @@ public class SmartPathSolver : MonoBehaviour
             }
             else
             {
+                // PathUtilities ì‚¬ìš© (ì´ë¯¸ í”„ë¡œì íŠ¸ì— ìˆëŠ” ìŠ¤í¬ë¦½íŠ¸ ì‚¬ìš©)
                 res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(
                     startPoint.position, m.assignedControlPoint, m.worldPos, 20);
             }
@@ -218,20 +226,11 @@ public class SmartPathSolver : MonoBehaviour
         return results;
     }
 
-    // ±×·ì ³»ºÎ ·ÎÁ÷ Ã³¸® (¿©±âµµ ·Î±× Ãß°¡)
     private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
         int N = members.Count;
 
-        // ±¸¿ª Áø´Ü ·Î±×
-        float avgRelAngle = members.Average(m => m.relativeAngle);
-        float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
-        float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
-        string zoneName = (zoneMultiplier < 0.8f) ? "Áß¾Ó" : "¿Ü°û";
-
-        LogToUI($"[±×·ì»ó¼¼] ¸â¹ö {N}¸í | À§Ä¡: {zoneName} (Áß½É°¢: {avgRelAngle:F1}) | °î¼±°­µµ: {zoneMultiplier:F1}¹è");
-
-        // ÆäÀÌÁî ÇÒ´ç
+        // í˜ì´ì¦ˆ í• ë‹¹
         var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
         float M = N + 2.0f;
         for (int k = 0; k < N; k++)
@@ -239,14 +238,14 @@ public class SmartPathSolver : MonoBehaviour
             sortedByLen[k].assignedPhase = (float)(N - k) / M;
         }
 
-        // °í¹Ğµµ ¿¹¿Ü
+        // ê³ ë°€ë„ ì˜ˆì™¸
         float minX = members.Min(m => m.screenPos.x);
         float maxX = members.Max(m => m.screenPos.x);
         float widthRatio = (maxX - minX) / Screen.width;
 
         if (N >= HighDensityCount && widthRatio < 0.2f)
         {
-            LogToUI($"  >> °æ°í: °í¹Ğµµ ±×·ì(N={N}) °¨Áö. Àü¿ø Á÷¼±È­.");
+            LogToUI($"  >> ê²½ê³ : ê³ ë°€ë„ ê·¸ë£¹(ë©¤ë²„ {N}ëª…) ê°ì§€. ì „ì› ì§ì„ í™”.");
             for (int i = 0; i < N; i++)
             {
                 members[i].isStraight = true;
@@ -255,7 +254,18 @@ public class SmartPathSolver : MonoBehaviour
             return;
         }
 
-        // °î¼± °è»ê ·ÎÁ÷ (±âÁ¸ À¯Áö)
+        // êµ¬ì—­ ì§„ë‹¨ ë¡œê·¸
+        float avgRelAngle = members.Average(m => m.relativeAngle);
+        float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
+        float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
+
+        string zoneName = (zoneMultiplier < 0.8f) ? "ì¤‘ì•™" : "ì™¸ê³½";
+        string memberIDs = string.Join(", ", members.Select(m => $"[{m.visualID}]"));
+
+        LogToUI($"[ê·¸ë£¹ìƒì„¸] ë©¤ë²„: {memberIDs}");
+        LogToUI($"   ã„´ ìœ„ì¹˜: {zoneName} (ì¤‘ì‹¬ê°: {avgRelAngle:F1}) | ê³¡ì„ ê°•ë„: {zoneMultiplier:F1}ë°°");
+
+        // ê³¡ì„  ê³„ì‚°
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
@@ -304,7 +314,6 @@ public class SmartPathSolver : MonoBehaviour
         }
     }
 
-    // UI¿¡ ·Î±× ¶ç¿ì´Â ÇïÆÛ ÇÔ¼ö
     private void LogToUI(string msg)
     {
         if (GameUIManager.Instance != null)
