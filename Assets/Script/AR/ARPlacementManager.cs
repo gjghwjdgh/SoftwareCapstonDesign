@@ -5,9 +5,10 @@ using System.Collections.Generic;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems; // UI 터치 방지용
 
 [RequireComponent(typeof(ARRaycastManager))]
-public class ARPlacementManager : MonoBehaviour // ISceneStateHandler 제거
+public class ARPlacementManager : MonoBehaviour
 {
     [Header("핵심 연결")]
     public PathVisualizer pathVisualizer;
@@ -31,12 +32,15 @@ public class ARPlacementManager : MonoBehaviour // ISceneStateHandler 제거
 
     void Update()
     {
-        if (!this.enabled) return; // 비활성화 시 작동 중단
+        if (!this.enabled) return;
 
         if (Touchscreen.current == null || !Touchscreen.current.primaryTouch.press.wasPressedThisFrame) return;
-        if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
+
+        // UI(로그창 등) 위에 손가락이 있으면 터치 무시
+        if (EventSystem.current.IsPointerOverGameObject(Touchscreen.current.primaryTouch.touchId.ReadValue())) return;
 
         Vector2 touchPosition = Touchscreen.current.primaryTouch.position.ReadValue();
+
         if (arRaycastManager.Raycast(touchPosition, hits, TrackableType.PlaneWithinPolygon))
         {
             var hitPose = hits[0].pose;
@@ -49,6 +53,20 @@ public class ARPlacementManager : MonoBehaviour // ISceneStateHandler 제거
             else
             {
                 Transform newTarget = Instantiate(targetPrefab, hitPose.position, hitPose.rotation).transform;
+
+                // ★★★ [추가된 부분] TargetGroup에 넣고 로그 알림 ★★★
+                if (GameUIManager.Instance != null)
+                {
+                    // 1. 부모 설정 (TargetGroup 밑으로)
+                    if (GameUIManager.Instance.targetParent != null)
+                    {
+                        newTarget.SetParent(GameUIManager.Instance.targetParent);
+                    }
+                    // 2. 새 타겟 생성 알림 (로그 초기화)
+                    GameUIManager.Instance.NotifyTargetSpawned();
+                }
+                // -----------------------------------------------------
+
                 placedTargets.Add(newTarget);
                 if (infoText != null) infoText.text = $"{placedTargets.Count}개의 목표 지점 배치 완료.";
                 if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(true);
@@ -63,7 +81,6 @@ public class ARPlacementManager : MonoBehaviour // ISceneStateHandler 제거
         if (gameUIManager != null) gameUIManager.StartAnalysis();
     }
 
-    // 함수 내용은 그대로 두되, 인터페이스 구현 명시는 제거됨
     public void EnterAnalysisState()
     {
         this.enabled = false;

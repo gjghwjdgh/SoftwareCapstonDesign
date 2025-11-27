@@ -252,6 +252,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 97555093}
   m_CullTransparentMesh: 1
+--- !u!1 &127213647
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 127213648}
+  m_Layer: 0
+  m_Name: TargetGroups
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &127213648
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 127213647}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 2.754447, y: -0.47391212, z: 0.14085038}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &170729462
 GameObject:
   m_ObjectHideFlags: 0
@@ -1630,14 +1661,14 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 55.6
-  m_fontSizeBase: 55.6
+  m_fontSize: 40
+  m_fontSizeBase: 40
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 0
-  m_HorizontalAlignment: 2
+  m_HorizontalAlignment: 1
   m_VerticalAlignment: 256
   m_textAlignment: 65535
   m_characterSpacing: 0
@@ -3860,6 +3891,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1553786206}
     - target: {fileID: 3046076022646862582, guid: 07a8ddf860a0e0e459e8f26a0367ac13, type: 3}
+      propertyPath: targetParent
+      value: 
+      objectReference: {fileID: 127213648}
+    - target: {fileID: 3046076022646862582, guid: 07a8ddf860a0e0e459e8f26a0367ac13, type: 3}
       propertyPath: logScrollView
       value: 
       objectReference: {fileID: 889749593}
@@ -3979,3 +4014,4 @@ SceneRoots:
   - {fileID: 1367901676}
   - {fileID: 1954501189}
   - {fileID: 1553786207}
+  - {fileID: 127213648}

@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using TMPro; // TextMeshPro 사용
+using TMPro;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -19,7 +19,7 @@ public class GameUIManager : MonoBehaviour
 
     [Header("로그 UI")]
     public GameObject logPanel;
-    public TextMeshProUGUI logContentText; // TMP로 변경됨
+    public TextMeshProUGUI logContentText;
     public ScrollRect logScrollView;
 
     [Header("관리자 스크립트 연결")]
@@ -30,14 +30,11 @@ public class GameUIManager : MonoBehaviour
     public ARPlacementManager placementManager;
     public ARMarkerManager markerManager;
 
-    [Header("Solver 자동 연결")]
-    public SmartPathSolver pathSolver;
-    public Transform targetParent; // 타겟들이 모이는 부모 객체
-
     [Header("설정")]
+    public SmartPathSolver pathSolver;
+    public Transform targetParent; // ★ 여기가 TargetGroup이 들어갈 곳
     public float travelDuration = 3.0f;
 
-    [Header("입력 판별 설정")]
     [Range(0f, 1f)] public float shapeWeight = 0.8f;
     [Range(0f, 1f)] public float velocityWeight = 0.2f;
 
@@ -63,23 +60,30 @@ public class GameUIManager : MonoBehaviour
         if (pathVisualizer == null) pathVisualizer = FindFirstObjectByType<PathVisualizer>();
     }
 
-    // =================================================================================
-    // [기능 1] 완전 초기화 (Reset)
-    // =================================================================================
+    // ★★★ [추가된 기능] 타겟이 생길 때마다 호출됨
+    public void NotifyTargetSpawned()
+    {
+        ClearLog(); // 로그 화면 지우기
+        Log("=== [새로운 타겟 생성됨] 로그 대기 중 ===");
+        Log("타겟이 추가되었습니다. [분석 시작]을 누르면 상세 계산이 표시됩니다.");
+
+        // 안내 문구 변경
+        if (infoText != null) infoText.text = "타겟 배치 중...";
+    }
+
+    // [기능] 완전 초기화 (Reset 버튼)
     public void OnClick_ResetAll()
     {
+        // 1. AR 세션 리셋 (공간 인식 정보 날리기)
         ARSession arSession = FindFirstObjectByType<ARSession>();
-        if (arSession != null)
-        {
-            arSession.Reset();
-        }
+        if (arSession != null) arSession.Reset();
 
+        // 2. 씬 새로고침 (가장 확실한 초기화)
+        // TargetGroup 아래 있는 애들도 씬이 다시 로드되면서 다 사라집니다.
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
-    // =================================================================================
-    // [기능 2] 로그 시스템
-    // =================================================================================
+    // [기능] 로그 창 열기/닫기
     public void OnClick_ToggleLog(bool show)
     {
         if (logPanel != null) logPanel.SetActive(show);
@@ -89,12 +93,10 @@ public class GameUIManager : MonoBehaviour
     {
         if (logContentText != null)
         {
-            // 시간 포함해서 로그 남기기
             logContentText.text += $"<color=yellow>[{System.DateTime.Now:HH:mm:ss}]</color> {message}\n";
         }
-        Debug.Log(message); // 콘솔에도 출력
+        Debug.Log(message);
 
-        // 자동 스크롤
         if (logScrollView != null)
         {
             Canvas.ForceUpdateCanvases();
@@ -107,9 +109,7 @@ public class GameUIManager : MonoBehaviour
         if (logContentText != null) logContentText.text = "";
     }
 
-    // =================================================================================
-    // [기능 3] 분석 프로세스
-    // =================================================================================
+    // [기능] 분석 시작
     public void StartAnalysis()
     {
         if (isAnalyzing) return;
@@ -120,8 +120,9 @@ public class GameUIManager : MonoBehaviour
     {
         isAnalyzing = true;
 
-        // ★ 로그: 시작 알림
-        Log(">>> [분석 시작] 버튼이 눌렸습니다.");
+        // 로그 출력 시작
+        ClearLog();
+        Log(">>> [분석 시작] 버튼 클릭됨");
 
         if (placementManager != null) placementManager.EnterAnalysisState();
         if (markerManager != null) markerManager.EnterAnalysisState();
@@ -129,30 +130,28 @@ public class GameUIManager : MonoBehaviour
         pathVisualizer.HighlightPath(-1);
         if (infoText != null) infoText.text = "경로 계산 중...";
 
-        // 타겟 없으면 취소
+        // 타겟 확인
         if (pathVisualizer.targets == null || pathVisualizer.targets.Count == 0)
         {
-            Log("오류: 타겟이 하나도 없습니다. 분석 취소.");
+            Log("<color=red>오류: 타겟이 없습니다.</color>");
             if (infoText != null) infoText.text = "타겟이 없습니다.";
             yield return new WaitForSeconds(1.0f);
             GoToIdleState();
             yield break;
         }
 
-        // Solver 실행
         if (pathSolver == null) pathSolver = FindFirstObjectByType<SmartPathSolver>();
 
-        // ★ 로그: Solver에게 넘기기 직전
-        Log($"Solver 실행... (대상: {pathVisualizer.targets.Count}개)");
+        Log($"Solver 알고리즘 실행 (타겟 수: {pathVisualizer.targets.Count}개)");
 
+        // 계산 실행
         List<PathResultData> solvedPaths = pathSolver.Solve(
             pathVisualizer.startPoint,
             pathVisualizer.targets,
             Camera.main
         );
 
-        // ★ 로그: Solver 계산 끝
-        Log($"계산 완료. {solvedPaths.Count}개의 경로가 생성되었습니다.");
+        Log($"계산 완료. {solvedPaths.Count}개의 경로 생성됨.");
 
         // 시각화
         pathVisualizer.DrawSolvedPaths(solvedPaths);
@@ -170,16 +169,14 @@ public class GameUIManager : MonoBehaviour
                 });
         }
 
-        // 사용자 입력 대기
+        // 드로잉 대기
         List<Vector2> userDrawnPath = new List<Vector2>();
         List<float> userDrawnTimes = new List<float>();
 
         if (infoText != null) infoText.text = "화면을 눌러 선을 따라 그리세요.";
-        Log("사용자 입력 대기 중...");
 
         yield return new WaitUntil(() => Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame);
 
-        // 트레일 그리기 시작
         if (userTrailPrefab != null && canvasRectTransform != null)
         {
             GameObject trailObj = Instantiate(userTrailPrefab, canvasRectTransform);
@@ -207,10 +204,9 @@ public class GameUIManager : MonoBehaviour
         yield return new WaitUntil(() => finishedCount >= solvedPaths.Count);
         pursuitMover3D.StopAllMovements();
 
-        // 결과 분석
         if (userDrawnPath.Count < 5)
         {
-            Log("결과: 입력이 너무 짧아서 판별 불가.");
+            Log("결과: 입력이 너무 짧습니다.");
             if (infoText != null) infoText.text = "입력이 너무 짧습니다.";
         }
         else
@@ -222,7 +218,6 @@ public class GameUIManager : MonoBehaviour
             {
                 int idx = kvp.Key;
                 var (helperPath, helperTimes) = kvp.Value;
-
                 if (helperPath == null || helperPath.Count < 2) continue;
 
                 float frechetCost = GestureAnalyser.CalculateFrechetDistance(userDrawnPath, helperPath);
@@ -231,7 +226,6 @@ public class GameUIManager : MonoBehaviour
 
                 float diagLen = Vector2.Distance(helperPath.First(), helperPath.Last());
                 float normFrechet = (diagLen > 1f) ? frechetCost / diagLen : frechetCost;
-
                 float score = (shapeWeight * normFrechet) + (velocityWeight * (1.0f - velocitySim));
 
                 results.Add((idx, score, frechetCost, velocitySim));
@@ -240,7 +234,6 @@ public class GameUIManager : MonoBehaviour
             if (results.Any())
             {
                 var best = results.OrderBy(r => r.combinedScore).First();
-
                 int visualNumber = -1;
                 for (int k = 0; k < solvedPaths.Count; k++)
                 {
@@ -251,10 +244,7 @@ public class GameUIManager : MonoBehaviour
                     }
                 }
 
-                // ★ 로그: 최종 결과
-                Log($"판별 성공! -> {visualNumber}번 경로 (원래인덱스: {best.targetIdx})");
-                Log($"상세 점수: 오차({best.frechet:F2}), 속도일치({best.velocity:P0})");
-
+                Log($"<color=green>▶ 판별 성공! 경로 {visualNumber}</color>");
                 if (infoText != null) infoText.text = $"판별 성공: {visualNumber}번 경로";
                 if (detailText != null) detailText.text = $"오차: {best.frechet:F2}, 속도: {best.velocity:P0}";
 
@@ -262,7 +252,7 @@ public class GameUIManager : MonoBehaviour
             }
             else
             {
-                Log("결과: 매칭되는 경로를 찾지 못함.");
+                Log("판별 실패.");
                 if (infoText != null) infoText.text = "판별 실패.";
             }
         }
@@ -283,6 +273,7 @@ public class GameUIManager : MonoBehaviour
         if (detailText != null) detailText.text = "";
         pathVisualizer.HighlightPath(-1);
         isAnalyzing = false;
+        Log("--- 대기 상태 ---");
     }
 
     private Vector2 ScreenToCanvasPosition(Vector2 screenPosition)
