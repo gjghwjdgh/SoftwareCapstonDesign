@@ -2,31 +2,41 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using TMPro;
+using TMPro; // TextMeshPro 사용
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using UnityEngine.XR.ARFoundation;
 
 public class GameUIManager : MonoBehaviour
 {
+    public static GameUIManager Instance;
+
     [Header("UI 연결")]
     public TextMeshProUGUI infoText;
     public TextMeshProUGUI detailText;
     public GameObject userTrailPrefab;
 
+    [Header("로그 UI")]
+    public GameObject logPanel;
+    public TextMeshProUGUI logContentText; // TMP로 변경됨
+    public ScrollRect logScrollView;
+
     [Header("관리자 스크립트 연결")]
     public PathVisualizer pathVisualizer;
     public PursuitMover pursuitMover3D;
 
-    [Header("씬 담당자 (현재 씬에 맞는 것 하나만 연결, 나머지는 None)")]
+    [Header("씬 담당자")]
     public ARPlacementManager placementManager;
     public ARMarkerManager markerManager;
 
     [Header("Solver 자동 연결")]
     public SmartPathSolver pathSolver;
+    public Transform targetParent; // 타겟들이 모이는 부모 객체
 
     [Header("설정")]
     public float travelDuration = 3.0f;
 
-    // (사용되지 않는 변수는 제거하여 혼란 방지)
     [Header("입력 판별 설정")]
     [Range(0f, 1f)] public float shapeWeight = 0.8f;
     [Range(0f, 1f)] public float velocityWeight = 0.2f;
@@ -35,13 +45,71 @@ public class GameUIManager : MonoBehaviour
     private LineRenderer currentUserTrail;
     private RectTransform canvasRectTransform;
 
-    void Start()
+    void Awake()
     {
-        Canvas canvas = FindAnyObjectByType<Canvas>();
-        if (canvas != null) canvasRectTransform = canvas.GetComponent<RectTransform>();
-        if (pathSolver == null) pathSolver = FindAnyObjectByType<SmartPathSolver>();
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+
+        ClearLog();
+        if (logPanel != null) logPanel.SetActive(false);
     }
 
+    void Start()
+    {
+        Canvas canvas = FindFirstObjectByType<Canvas>();
+        if (canvas != null) canvasRectTransform = canvas.GetComponent<RectTransform>();
+
+        if (pathSolver == null) pathSolver = FindFirstObjectByType<SmartPathSolver>();
+        if (pathVisualizer == null) pathVisualizer = FindFirstObjectByType<PathVisualizer>();
+    }
+
+    // =================================================================================
+    // [기능 1] 완전 초기화 (Reset)
+    // =================================================================================
+    public void OnClick_ResetAll()
+    {
+        ARSession arSession = FindFirstObjectByType<ARSession>();
+        if (arSession != null)
+        {
+            arSession.Reset();
+        }
+
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    // =================================================================================
+    // [기능 2] 로그 시스템
+    // =================================================================================
+    public void OnClick_ToggleLog(bool show)
+    {
+        if (logPanel != null) logPanel.SetActive(show);
+    }
+
+    public void Log(string message)
+    {
+        if (logContentText != null)
+        {
+            // 시간 포함해서 로그 남기기
+            logContentText.text += $"<color=yellow>[{System.DateTime.Now:HH:mm:ss}]</color> {message}\n";
+        }
+        Debug.Log(message); // 콘솔에도 출력
+
+        // 자동 스크롤
+        if (logScrollView != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            logScrollView.verticalNormalizedPosition = 0f;
+        }
+    }
+
+    public void ClearLog()
+    {
+        if (logContentText != null) logContentText.text = "";
+    }
+
+    // =================================================================================
+    // [기능 3] 분석 프로세스
+    // =================================================================================
     public void StartAnalysis()
     {
         if (isAnalyzing) return;
@@ -52,54 +120,66 @@ public class GameUIManager : MonoBehaviour
     {
         isAnalyzing = true;
 
-        // 1. 분석 시작 즉시 매니저 비활성화 (추가 생성 차단)
+        // ★ 로그: 시작 알림
+        Log(">>> [분석 시작] 버튼이 눌렸습니다.");
+
         if (placementManager != null) placementManager.EnterAnalysisState();
         if (markerManager != null) markerManager.EnterAnalysisState();
 
         pathVisualizer.HighlightPath(-1);
-        if (infoText != null) infoText.text = "도우미를 따라 그려보세요!";
-        if (detailText != null) detailText.text = "";
+        if (infoText != null) infoText.text = "경로 계산 중...";
 
+        // 타겟 없으면 취소
         if (pathVisualizer.targets == null || pathVisualizer.targets.Count == 0)
         {
+            Log("오류: 타겟이 하나도 없습니다. 분석 취소.");
+            if (infoText != null) infoText.text = "타겟이 없습니다.";
+            yield return new WaitForSeconds(1.0f);
             GoToIdleState();
             yield break;
         }
 
-        // ★★★ [중요] 분석 직전에 타겟들을 화면 좌측->우측 순서로 재정렬 ★★★
-        SortTargetsLeftToRight();
+        // Solver 실행
+        if (pathSolver == null) pathSolver = FindFirstObjectByType<SmartPathSolver>();
 
-        // 2. Solver에게 계산 요청 (정렬된 타겟 리스트 사용)
-        // (PathVisualizer가 실시간으로 하고 있지만, 정렬 후 확정된 데이터를 얻기 위해 다시 호출)
+        // ★ 로그: Solver에게 넘기기 직전
+        Log($"Solver 실행... (대상: {pathVisualizer.targets.Count}개)");
+
         List<PathResultData> solvedPaths = pathSolver.Solve(
             pathVisualizer.startPoint,
             pathVisualizer.targets,
             Camera.main
         );
 
-        // 3. 시각화 업데이트 (계산된 곡선 및 번호 갱신)
+        // ★ 로그: Solver 계산 끝
+        Log($"계산 완료. {solvedPaths.Count}개의 경로가 생성되었습니다.");
+
+        // 시각화
         pathVisualizer.DrawSolvedPaths(solvedPaths);
 
-        // 4. 도우미 객체 출발 (계산된 페이즈 위치로 즉시 이동)
+        // 도우미 이동
         var targetDataMap = new Dictionary<int, (List<Vector2>, List<float>)>();
         int finishedCount = 0;
 
         foreach (var data in solvedPaths)
         {
             pursuitMover3D.StartMovementWithPhase(data.pathPoints, travelDuration, data.phaseValue, data.overrideColor,
-                (p, t) => {
-                    if (p != null) targetDataMap[data.targetIndex] = (p, t);
+                (screenPath, times) => {
+                    if (screenPath != null) targetDataMap[data.targetIndex] = (screenPath, times);
                     finishedCount++;
                 });
         }
 
-        // 5. 사용자 입력 (터치)
+        // 사용자 입력 대기
         List<Vector2> userDrawnPath = new List<Vector2>();
         List<float> userDrawnTimes = new List<float>();
 
-        if (infoText != null) infoText.text = "준비되면 화면을 눌러 그리기 시작하세요.";
+        if (infoText != null) infoText.text = "화면을 눌러 선을 따라 그리세요.";
+        Log("사용자 입력 대기 중...");
+
         yield return new WaitUntil(() => Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame);
 
+        // 트레일 그리기 시작
         if (userTrailPrefab != null && canvasRectTransform != null)
         {
             GameObject trailObj = Instantiate(userTrailPrefab, canvasRectTransform);
@@ -107,7 +187,7 @@ public class GameUIManager : MonoBehaviour
             currentUserTrail.positionCount = 0;
         }
 
-        if (infoText != null) infoText.text = "그리는 중...";
+        if (infoText != null) infoText.text = "드로잉 중...";
 
         while (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
         {
@@ -123,35 +203,35 @@ public class GameUIManager : MonoBehaviour
             yield return null;
         }
 
-        if (infoText != null) infoText.text = "분석 중...";
+        if (infoText != null) infoText.text = "결과 분석 중...";
         yield return new WaitUntil(() => finishedCount >= solvedPaths.Count);
         pursuitMover3D.StopAllMovements();
 
-        // 6. 분석 및 결과
+        // 결과 분석
         if (userDrawnPath.Count < 5)
         {
+            Log("결과: 입력이 너무 짧아서 판별 불가.");
             if (infoText != null) infoText.text = "입력이 너무 짧습니다.";
         }
         else
         {
-            var results = new List<(int index, float combinedScore, float frechet, float velocity)>();
+            var results = new List<(int targetIdx, float combinedScore, float frechet, float velocity)>();
             float userAverageSpeed = GestureAnalyser.GetAverageSpeed(userDrawnPath, userDrawnTimes);
 
             foreach (var kvp in targetDataMap)
             {
                 int idx = kvp.Key;
-                var (path, times) = kvp.Value;
-                if (path == null || path.Count < 2) continue;
+                var (helperPath, helperTimes) = kvp.Value;
 
-                float frechetCost = GestureAnalyser.CalculateFrechetDistance(userDrawnPath, path);
-                float targetAvgSpeed = GestureAnalyser.GetAverageSpeed(path, times);
+                if (helperPath == null || helperPath.Count < 2) continue;
+
+                float frechetCost = GestureAnalyser.CalculateFrechetDistance(userDrawnPath, helperPath);
+                float targetAvgSpeed = GestureAnalyser.GetAverageSpeed(helperPath, helperTimes);
                 float velocitySim = GestureAnalyser.CalculateVelocitySimilarity(userAverageSpeed, targetAvgSpeed);
 
-                // 정규화 (대각선 길이)
-                float diagLen = Vector2.Distance(path.First(), path.Last());
+                float diagLen = Vector2.Distance(helperPath.First(), helperPath.Last());
                 float normFrechet = (diagLen > 1f) ? frechetCost / diagLen : frechetCost;
 
-                // 점수 계산
                 float score = (shapeWeight * normFrechet) + (velocityWeight * (1.0f - velocitySim));
 
                 results.Add((idx, score, frechetCost, velocitySim));
@@ -161,24 +241,28 @@ public class GameUIManager : MonoBehaviour
             {
                 var best = results.OrderBy(r => r.combinedScore).First();
 
-                // ★★★ [결과 표시] 시각적 번호(1, 2, 3...) 찾기 ★★★
                 int visualNumber = -1;
                 for (int k = 0; k < solvedPaths.Count; k++)
                 {
-                    if (solvedPaths[k].targetIndex == best.index)
+                    if (solvedPaths[k].targetIndex == best.targetIdx)
                     {
-                        visualNumber = k + 1; // 0번부터 시작하니까 +1
+                        visualNumber = k + 1;
                         break;
                     }
                 }
 
-                if (infoText != null) infoText.text = $"판별 성공: 경로 {visualNumber}";
-                if (detailText != null) detailText.text = $"오차율: {best.frechet:F2}, 속도: {best.velocity:P0}";
+                // ★ 로그: 최종 결과
+                Log($"판별 성공! -> {visualNumber}번 경로 (원래인덱스: {best.targetIdx})");
+                Log($"상세 점수: 오차({best.frechet:F2}), 속도일치({best.velocity:P0})");
 
-                pathVisualizer.HighlightPath(best.index);
+                if (infoText != null) infoText.text = $"판별 성공: {visualNumber}번 경로";
+                if (detailText != null) detailText.text = $"오차: {best.frechet:F2}, 속도: {best.velocity:P0}";
+
+                pathVisualizer.HighlightPath(best.targetIdx);
             }
             else
             {
+                Log("결과: 매칭되는 경로를 찾지 못함.");
                 if (infoText != null) infoText.text = "판별 실패.";
             }
         }
@@ -195,7 +279,7 @@ public class GameUIManager : MonoBehaviour
         if (placementManager != null) placementManager.EnterIdleState();
         if (markerManager != null) markerManager.EnterIdleState();
 
-        if (infoText != null) infoText.text = "목표 지점을 추가하거나 다시 분석하세요.";
+        if (infoText != null && !isAnalyzing) infoText.text = "목표 지점을 추가하거나 다시 분석하세요.";
         if (detailText != null) detailText.text = "";
         pathVisualizer.HighlightPath(-1);
         isAnalyzing = false;
@@ -206,19 +290,5 @@ public class GameUIManager : MonoBehaviour
         if (canvasRectTransform == null) return Vector2.zero;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPosition, null, out Vector2 localPoint);
         return localPoint;
-    }
-
-    // ★★★ 타겟을 화면 X좌표 기준으로 정렬하는 함수 ★★★
-    private void SortTargetsLeftToRight()
-    {
-        Camera cam = Camera.main;
-        if (cam == null || pathVisualizer.targets == null) return;
-
-        pathVisualizer.targets.Sort((a, b) => {
-            if (a == null || b == null) return 0;
-            float screenX_A = cam.WorldToScreenPoint(a.position).x;
-            float screenX_B = cam.WorldToScreenPoint(b.position).x;
-            return screenX_A.CompareTo(screenX_B);
-        });
     }
 }

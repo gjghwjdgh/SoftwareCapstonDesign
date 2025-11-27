@@ -2,29 +2,45 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
+// 결과 데이터 구조체
 public class PathResultData
 {
     public int targetIndex;
-    public List<Vector3> pathPoints;
-    public float phaseValue;
-    public Color? overrideColor;
+    public List<Vector3> pathPoints; // 라인 렌더러에 넣을 점들
+    public float phaseValue;         // 쉐이더 등에 넣을 페이즈 값 (0.0~1.0)
+    public Color? overrideColor;     // 고밀도 그룹용 색상 (없으면 null)
 }
 
 public class SmartPathSolver : MonoBehaviour
 {
-    [Header("시스템 매개변수")]
-    public float AngleThreshold = 10.0f;       // 그룹 분할 각도 기준
-    public float MaxSectorAngle = 45.0f;       // 그룹 최대 허용 각도
-    public float CenterZoneRadius = 0.3f;      // 중앙 구역 반지름 비율 (0.0 ~ 0.5)
-    public float CurveRatioWeak = 0.03f;       // 약한 곡선 비율 (2~5%)
-    public float CurveRatioStrong = 0.15f;     // 강한 곡선 비율 (10~15%)
-    public int HighDensityCount = 8;           // 고밀도 판단 개수
+    [Header("1. 그룹핑 설정 (레이더 스캔)")]
+    [Tooltip("옆 타겟과의 각도 차이가 이 값보다 크면 그룹을 끊습니다.")]
+    public float AngleThreshold = 15.0f;
+    [Tooltip("한 그룹의 전체 각도가 이 값을 넘으면 오른쪽부터 잘라냅니다.")]
+    public float MaxGroupSpanAngle = 45.0f;
 
+    [Header("2. 곡선 강도 및 구역 설정")]
+    [Tooltip("화면 중앙 구역의 반지름 비율 (0.0 ~ 0.5)")]
+    public float CenterZoneRadius = 0.3f;
+    [Tooltip("중앙 구역에서의 약한 곡률 비율 (길이 비례)")]
+    public float CurveRatioWeak = 0.05f;
+    [Tooltip("외곽 구역에서의 강한 곡률 비율 (길이 비례)")]
+    public float CurveRatioStrong = 0.15f;
+
+    [Header("3. 예외 처리")]
+    [Tooltip("이 개수 이상 뭉치면 고밀도(직선화)로 처리합니다.")]
+    public int HighDensityCount = 8;
+
+    [Header("디버그")]
+    public bool showDebugGizmos = true;
+
+    // 디버그용 색상 팔레트
     private Color[] debugColors = new Color[] {
         Color.red, Color.blue, Color.green, Color.yellow,
         Color.cyan, Color.magenta, new Color(1, 0.5f, 0)
     };
 
+    // 내부 연산용 데이터 클래스
     private class TargetMeta
     {
         public int originalIndex;
@@ -32,29 +48,42 @@ public class SmartPathSolver : MonoBehaviour
         public Vector3 worldPos;
         public Vector2 screenPos;
         public float distance3D;
-        public float screenAngle;
-        public float screenDist;
-        public int groupID = -1;
 
+        public float rawAngle;      // 화면 절대 각도
+        public float relativeAngle; // 동적 중심 기준 상대 각도
+
+        public int groupID = -1;
         public float assignedPhase;
         public Vector3 assignedControlPoint;
         public bool isStraight = false;
         public Color? debugColor;
     }
 
+    private List<TargetMeta> debugMetas = new List<TargetMeta>();
+    private Vector3 debugStartPos;
+
+    // --- [마스터 알고리즘 함수] ---
     public List<PathResultData> Solve(Transform startPoint, List<Transform> targets, Camera cam)
     {
-        if (cam == null || startPoint == null || targets == null || targets.Count == 0) return new List<PathResultData>();
+        if (cam == null || startPoint == null || targets == null || targets.Count == 0)
+            return new List<PathResultData>();
 
-        // [단계 1] 초기화 및 데이터 수집
+        if (GameUIManager.Instance != null)
+            GameUIManager.Instance.Log($"계산 시작: 타겟 {targets.Count}개");
+
         List<TargetMeta> metas = new List<TargetMeta>();
         Vector3 startScreenPos3 = cam.WorldToScreenPoint(startPoint.position);
         Vector2 startScreenPos = new Vector2(startScreenPos3.x, startScreenPos3.y);
-        Vector3 camForward = cam.transform.forward; camForward.y = 0; camForward.Normalize();
+        debugStartPos = startPoint.position;
 
+        // ---------------------------------------------------------
+        // [단계 1] 입구 컷 (Filtering) & 데이터 수집
+        // ---------------------------------------------------------
         for (int i = 0; i < targets.Count; i++)
         {
             if (targets[i] == null) continue;
+
+            // 카메라 뒤쪽(Z <= 0)은 무조건 제외
             if (cam.WorldToViewportPoint(targets[i].position).z <= 0) continue;
 
             TargetMeta meta = new TargetMeta();
@@ -66,57 +95,99 @@ public class SmartPathSolver : MonoBehaviour
             Vector3 sPos = cam.WorldToScreenPoint(meta.worldPos);
             meta.screenPos = new Vector2(sPos.x, sPos.y);
 
-            Vector3 dirToTarget = (meta.worldPos - startPoint.position).normalized;
-            dirToTarget.y = 0;
-            meta.screenAngle = Vector3.SignedAngle(camForward, dirToTarget, Vector3.up);
+            // Raw Angle (Atan2) 계산
+            Vector2 dir = meta.screenPos - startScreenPos;
+            meta.rawAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 
             metas.Add(meta);
         }
 
         if (metas.Count == 0) return new List<PathResultData>();
 
-        // [단계 2] 레이더 스캔 그룹핑
-        metas.Sort((a, b) => a.screenAngle.CompareTo(b.screenAngle));
+        // ---------------------------------------------------------
+        // [단계 2] 동적 중심 설정 및 정렬 (Dynamic Centering)
+        // ---------------------------------------------------------
 
-        int currentGroupID = 0;
-        metas[0].groupID = currentGroupID;
-        for (int i = 1; i < metas.Count; i++)
+        // 1. 절대 각도 기준 내림차순 정렬 (왼쪽이 180도, 오른쪽이 0도에 가까우므로)
+        // 주의: Atan2는 180(좌) ~ 0(우) ~ -180(좌하단) 범위임.
+        // 여기서는 단순하게 상대값 계산을 위해 정렬합니다.
+        metas.Sort((a, b) => b.rawAngle.CompareTo(a.rawAngle));
+
+        // 2. 중간 객체(Median) 찾기
+        float centerOffsetAngle = 0f;
+        if (metas.Count > 0)
         {
-            if (Mathf.Abs(metas[i].screenAngle - metas[i - 1].screenAngle) > AngleThreshold) currentGroupID++;
-            metas[i].groupID = currentGroupID;
+            int midIndex = metas.Count / 2;
+            centerOffsetAngle = metas[midIndex].rawAngle;
         }
 
-        var groupedMetas = metas.GroupBy(m => m.groupID).ToList();
-        List<TargetMeta> loners = new List<TargetMeta>();
-        List<List<TargetMeta>> regularGroups = new List<List<TargetMeta>>();
-        int colorIndex = 0;
-
-        foreach (var group in groupedMetas)
+        // 3. 상대 각도 계산 및 재정렬 (왼쪽 -> 오른쪽 순서 보장)
+        foreach (var m in metas)
         {
-            List<TargetMeta> members = group.ToList();
-            if (members.Count == 1) { loners.Add(members[0]); members[0].debugColor = Color.white; }
-            else
+            m.relativeAngle = Mathf.DeltaAngle(centerOffsetAngle, m.rawAngle);
+        }
+        // 왼쪽(큰 양수) -> 오른쪽(음수) 순서로 정렬 (내림차순)
+        metas.Sort((a, b) => b.relativeAngle.CompareTo(a.relativeAngle));
+
+
+        // ---------------------------------------------------------
+        // [단계 3] 순차적 그룹핑 및 가지치기 (Sequential Grouping)
+        // ---------------------------------------------------------
+        List<List<TargetMeta>> finalGroups = new List<List<TargetMeta>>();
+
+        if (metas.Count > 0)
+        {
+            List<TargetMeta> currentGroup = new List<TargetMeta>();
+            currentGroup.Add(metas[0]);
+
+            for (int i = 1; i < metas.Count; i++)
             {
-                regularGroups.Add(members);
-                Color col = debugColors[colorIndex % debugColors.Length];
-                foreach (var m in members) m.debugColor = col;
-                colorIndex++;
+                TargetMeta current = metas[i];
+                TargetMeta prev = currentGroup.Last();
+
+                // 조건 A: 인접 간격 확인
+                float gap = Mathf.Abs(Mathf.DeltaAngle(prev.relativeAngle, current.relativeAngle));
+
+                // 조건 B: 그룹 전체 크기 확인 (비대해짐 방지)
+                float totalSpan = Mathf.Abs(Mathf.DeltaAngle(currentGroup[0].relativeAngle, current.relativeAngle));
+
+                if (gap <= AngleThreshold && totalSpan <= MaxGroupSpanAngle)
+                {
+                    currentGroup.Add(current);
+                }
+                else
+                {
+                    // 그룹 끊기 (가지치기 완료)
+                    finalGroups.Add(currentGroup);
+                    currentGroup = new List<TargetMeta>();
+                    currentGroup.Add(current);
+                }
             }
+            if (currentGroup.Count > 0) finalGroups.Add(currentGroup);
         }
 
-        // [단계 3~6] 그룹별 처리 (정규 그룹)
-        foreach (var members in regularGroups)
+        // 디버깅용 데이터 저장
+        debugMetas = metas;
+        if (GameUIManager.Instance != null)
+            GameUIManager.Instance.Log($"그룹핑 완료: 총 {finalGroups.Count}개 그룹");
+
+        // ---------------------------------------------------------
+        // [단계 4, 5, 6] 그룹별 규칙 적용 (페이즈, 곡선, 예외처리)
+        // ---------------------------------------------------------
+        int colorIdx = 0;
+        foreach (var group in finalGroups)
         {
-            ProcessGroup(members, startPoint.position, startScreenPos, cam);
+            // 디버그 색상 지정 (외톨이는 흰색)
+            Color col = (group.Count == 1) ? Color.white : debugColors[colorIdx % debugColors.Length];
+            if (group.Count > 1) colorIdx++;
+            foreach (var m in group) m.debugColor = col;
+
+            ProcessGroupRules(group, startPoint.position, startScreenPos, cam);
         }
 
-        // 외톨이 처리 (가짜 그룹)
-        if (loners.Count > 0)
-        {
-            ProcessGroup(loners, startPoint.position, startScreenPos, cam);
-        }
-
-        // 결과 생성
+        // ---------------------------------------------------------
+        // [단계 7] 최종 결과 생성
+        // ---------------------------------------------------------
         List<PathResultData> results = new List<PathResultData>();
         foreach (var m in metas)
         {
@@ -124,166 +195,159 @@ public class SmartPathSolver : MonoBehaviour
             res.targetIndex = m.originalIndex;
             res.phaseValue = m.assignedPhase;
             res.overrideColor = m.debugColor;
+
             if (m.isStraight)
             {
-                res.pathPoints = new List<Vector3>();
-                for (int j = 0; j <= 50; j++) res.pathPoints.Add(Vector3.Lerp(startPoint.position, m.worldPos, j / 50f));
+                res.pathPoints = new List<Vector3> { startPoint.position, m.worldPos };
             }
             else
             {
-                res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(startPoint.position, m.assignedControlPoint, m.worldPos, 50);
+                // PathUtilities 사용 (이미 프로젝트에 있는 스크립트)
+                res.pathPoints = PathUtilities.GenerateQuadraticBezierCurvePath(
+                    startPoint.position, m.assignedControlPoint, m.worldPos, 20);
             }
             results.Add(res);
         }
         return results;
     }
 
-    // ★★★ 피드백이 반영된 핵심 처리 함수 ★★★
-    private void ProcessGroup(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
+    // 그룹 내부 로직 처리
+    private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
         int N = members.Count;
 
-        // --- [1. 그룹 속성 진단] ---
-        Vector2 groupCenterScreen = Vector2.zero;
-        float minX = float.MaxValue, maxX = float.MinValue;
-        float minY = float.MaxValue, maxY = float.MinValue;
-
-        foreach (var m in members)
-        {
-            groupCenterScreen += m.screenPos;
-            if (m.screenPos.x < minX) minX = m.screenPos.x;
-            if (m.screenPos.x > maxX) maxX = m.screenPos.x;
-            if (m.screenPos.y < minY) minY = m.screenPos.y;
-            if (m.screenPos.y > maxY) maxY = m.screenPos.y;
-        }
-        groupCenterScreen /= N;
-
-        float screenDiag = new Vector2(Screen.width, Screen.height).magnitude;
-        float groupDiag = new Vector2(maxX - minX, maxY - minY).magnitude;
-        float groupSizeRatio = groupDiag / screenDiag;
-
-        // 고밀도 진단: 개수는 많고(8개 이상) 크기는 작을 때(화면의 20% 미만)
-        bool isHighDensity = (N >= HighDensityCount) && (groupSizeRatio < 0.2f);
-
-        // 구역 진단: 화면 중앙으로부터의 거리 비율
-        Vector2 screenCenter = new Vector2(Screen.width, Screen.height) * 0.5f;
-        float distFromCenter = Vector2.Distance(groupCenterScreen, screenCenter);
-        float maxDist = screenDiag * 0.5f;
-        float normalizedDist = Mathf.Clamp01(distFromCenter / maxDist); // 0.0(중앙) ~ 1.0(구석)
-
-        // --- [2. 페이즈 할당 (규격서 공식)] ---
-        // 길이 긴 순서대로 정렬 (0번이 가장 김)
+        // =========================================================
+        // A. 지능형 페이즈 할당 (길이 기반)
+        // =========================================================
         var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
         float M = N + 2.0f;
-
         for (int k = 0; k < N; k++)
         {
-            // 공식: (N - k) / M
-            // k=0 (1등, 긴 경로) -> N/M (후반부)
-            // k=N-1 (꼴등, 짧은 경로) -> 1/M (초반부)
+            // 4, 3, 2, 1 순서로 할당 (도착점 앞 2칸 비움)
             sortedByLen[k].assignedPhase = (float)(N - k) / M;
         }
 
-        // --- [3. 예외 처리: 고밀도] ---
-        if (isHighDensity)
+        // =========================================================
+        // B. 예외 처리: 고밀도 배치 (적극적 단순화)
+        // =========================================================
+        // 화면상 크기 비율 계산
+        float minX = members.Min(m => m.screenPos.x);
+        float maxX = members.Max(m => m.screenPos.x);
+        float widthRatio = (maxX - minX) / Screen.width;
+
+        // 개수가 많고(8개 이상) 좁은 영역(20% 미만)에 모여있다면
+        if (N >= HighDensityCount && widthRatio < 0.2f)
         {
+            if (GameUIManager.Instance != null)
+                GameUIManager.Instance.Log($"고밀도 그룹 감지(N={N}). 직선화 처리.");
+
             for (int i = 0; i < N; i++)
             {
                 members[i].isStraight = true;
-                members[i].debugColor = Color.HSVToRGB((float)i / N, 1f, 1f);
+                members[i].debugColor = Color.HSVToRGB((float)i / N, 1f, 1f); // 무지개색
             }
             return;
         }
 
-        // --- [4. 곡선 할당 (상세 규칙)] ---
-        ApplyDetailedCurveRules(members, startPos, cam, normalizedDist);
-    }
+        // =========================================================
+        // C. 곡선 강도 및 패턴 결정 (구역 기반 + 상세 배치)
+        // =========================================================
 
-    private void ApplyDetailedCurveRules(List<TargetMeta> members, Vector3 startPos, Camera cam, float zoneDist)
-    {
-        int count = members.Count;
-        int centerIdx = count / 2;
+        // 1. 구역 진단 (Zone Analysis)
+        float avgRelAngle = members.Average(m => m.relativeAngle);
+        // 중앙에서 45도 이상 벗어나면 완전 외곽으로 간주 (0.0 ~ 1.0)
+        float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
 
-        // 1. 구역 가중치 (Zone Multiplier)
-        // 중앙이면 0.5배(약하게), 외곽이면 최대 2.5배(강하게)
-        float zoneMultiplier = 1.0f;
-        if (zoneDist < CenterZoneRadius) zoneMultiplier = 0.5f;
-        else zoneMultiplier = Mathf.Lerp(1.0f, 2.5f, (zoneDist - CenterZoneRadius) * 2f);
+        // 구역 가중치: 중앙(0.5배) ~ 외곽(2.5배)
+        float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
 
-        // 2. 깊이 정보 (Fountain Effect용)
+        // 2. 깊이 정보 (Depth Priority)
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
 
-        for (int i = 0; i < count; i++)
+        int centerIdx = N / 2;
+
+        for (int i = 0; i < N; i++)
         {
             TargetMeta m = members[i];
 
-            // 카메라 기준 벡터 준비
+            // 카메라 기준 벡터
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
 
-            Vector3 bendVector = Vector3.zero;
-            bool isLeft = (i < centerIdx); // 정렬된 리스트 기준 왼쪽 그룹인가?
+            // 비틀기 벡터 (Twist)
+            Vector3 upTwist = (visualUp * 0.8f + visualRight * 0.2f).normalized;
+            Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
 
-            // --- [규칙 B: 공간 활용] ---
+            Vector3 bendVector = Vector3.zero;
+            bool isLeftInGroup = (i < centerIdx);
+
+            // --- 패턴 결정 (인원수별 시나리오) ---
 
             // 홀수일 때 정중앙은 직선
-            if (count % 2 == 1 && i == centerIdx)
+            if (N % 2 == 1 && i == centerIdx)
             {
                 m.isStraight = true;
             }
-            // 4개 이하: 좌우 공간만 사용 (Lookup Table: 2개, 3개, 4개 상황 포괄)
-            else if (count <= 4)
+            // 4개 이하 (좌우 공간만 사용)
+            else if (N <= 4)
             {
-                if (isLeft) bendVector = -visualRight; // 왼쪽
-                else bendVector = visualRight;         // 오른쪽
+                if (isLeftInGroup) bendVector = -visualRight;
+                else bendVector = visualRight;
             }
-            // 5개 이상: 상하 공간(Twist) 혼합 사용
+            // 5개 이상 (위아래 혼합)
             else
             {
-                if (isLeft) // 왼쪽 그룹
+                if (isLeftInGroup)
                 {
-                    if (i % 2 == 0) bendVector = -visualRight; // 순수 왼쪽
-                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized; // 위+왼쪽 비틀기
+                    if (i % 2 == 0) bendVector = -visualRight; // 왼쪽
+                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized; // 좌상단
                 }
-                else // 오른쪽 그룹
+                else
                 {
-                    // 오른쪽 그룹 내에서의 상대 인덱스
-                    int rightIdx = i - centerIdx;
-                    if (rightIdx % 2 == 0) bendVector = visualRight; // 순수 오른쪽
-                    else bendVector = (-visualUp * 0.8f + visualRight * 0.2f).normalized; // 아래+오른쪽 비틀기
+                    int rIdx = i - centerIdx;
+                    if (rIdx % 2 == 0) bendVector = visualRight; // 오른쪽
+                    else bendVector = downTwist; // 우하단
                 }
             }
 
-            // --- [규칙 D: 깊이 우선 할당 & 강도 결정] ---
-            float baseRatio = CurveRatioStrong;
+            // --- 강도 결정 ---
+            float ratio = CurveRatioStrong;
 
+            // 깊이 우선 규칙
             if (m == closest)
             {
-                baseRatio = CurveRatioWeak; // 가까운 건 약하게
-                // 홀수 그룹이면 가장 가까운 놈에게 직선 우선권 부여 (중앙이 아니더라도)
-                // (단, 위에서 이미 중앙 인덱스에게 직선을 줬으므로 여기선 약한 곡선으로 유지하거나 덮어쓸 수 있음)
-                // 규격서: "가장 가까운 타겟: 직선 또는 가장 약한 곡선"
+                ratio = CurveRatioWeak;
+                if (N % 2 == 1) m.isStraight = true; // 가장 가까운 놈 직선 우선
             }
             else if (m == farthest)
             {
-                baseRatio = CurveRatioStrong * 1.2f; // 먼 건 더 크게 (Fountain Effect)
-            }
-            else
-            {
-                // 안쪽(중앙 인덱스에 가까운) 경로는 약하게, 바깥쪽은 강하게 차등 적용
-                float distFromIdxCenter = Mathf.Abs(i - (count - 1) / 2.0f);
-                if (distFromIdxCenter < 1.5f) baseRatio = CurveRatioWeak;
+                ratio = CurveRatioStrong * 1.2f; // 먼 놈은 더 크게
             }
 
-            // 최종 Offset 계산
-            float finalOffset = m.distance3D * baseRatio * zoneMultiplier;
+            // 최종 Offset = (3D 길이) * (비율) * (구역 가중치)
+            float finalOffset = m.distance3D * ratio * zoneMultiplier;
 
-            // 제어점 할당
+            // 제어점 설정
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
             m.assignedControlPoint = mid + (bendVector * finalOffset);
+        }
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (!showDebugGizmos || debugMetas == null) return;
+        foreach (var m in debugMetas)
+        {
+            if (m.debugColor != null) Gizmos.color = m.debugColor.Value;
+            Gizmos.DrawSphere(m.worldPos, 0.05f);
+            if (!m.isStraight)
+            {
+                Gizmos.color = Color.gray;
+                Gizmos.DrawLine(m.worldPos, m.assignedControlPoint);
+            }
         }
     }
 }
