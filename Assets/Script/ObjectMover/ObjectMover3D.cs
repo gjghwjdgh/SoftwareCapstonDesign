@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,11 +10,11 @@ public class ObjectMover3D : MonoBehaviour
 
     public void StopMovement() { shouldLoop = false; }
 
-    // ¡Ú¡Ú¡Ú PursuitMover°¡ È£ÃâÇÏ´Â ÃÊ±âÈ­ ÇÔ¼ö Ãß°¡ ¡Ú¡Ú¡Ú
-    // ÄÚ·çÆ¾ ½ÃÀÛ Àü¿¡ Áï½Ã À§Ä¡¸¦ Àâ±â À§ÇØ ¿ÜºÎ¿¡¼­ È£ÃâÇÕ´Ï´Ù.
+    // â˜…â˜…â˜… PursuitMoverê°€ í˜¸ì¶œí•˜ëŠ” ì´ˆê¸°í™” í•¨ìˆ˜ ì¶”ê°€ â˜…â˜…â˜…
+    // ì½”ë£¨í‹´ ì‹œì‘ ì „ì— ì¦‰ì‹œ ìœ„ì¹˜ë¥¼ ì¡ê¸° ìœ„í•´ ì™¸ë¶€ì—ì„œ í˜¸ì¶œí•©ë‹ˆë‹¤.
     public void ForceSetPosition(List<Vector3> path, float startPhase)
     {
-        // ½Ã°£ ºñÀ² 0.0ÀÏ ¶§ÀÇ À§Ä¡(Áï, StartPhase À§Ä¡)·Î ÀÌµ¿
+        // ì‹œê°„ ë¹„ìœ¨ 0.0ì¼ ë•Œì˜ ìœ„ì¹˜(ì¦‰, StartPhase ìœ„ì¹˜)ë¡œ ì´ë™
         UpdatePositionMapped(path, 0f, startPhase);
     }
 
@@ -32,7 +32,7 @@ public class ObjectMover3D : MonoBehaviour
 
         float timer = 0f;
 
-        // ÄÚ·çÆ¾ ½ÃÀÛ ½ÃÁ¡¿¡µµ À§Ä¡¸¦ È®½ÇÈ÷ ÀâÀ½
+        // ì½”ë£¨í‹´ ì‹œì‘ ì‹œì ì—ë„ ìœ„ì¹˜ë¥¼ í™•ì‹¤íˆ ì¡ìŒ
         UpdatePositionMapped(path, 0f, startPhase);
 
         while (shouldLoop)
@@ -57,7 +57,7 @@ public class ObjectMover3D : MonoBehaviour
 
             float timeRatio = timer / duration;
 
-            // 0~1 ½Ã°£À» StartPhase~1 ±¸°£À¸·Î ¸ÊÇÎÇÏ¿© ÀÌµ¿
+            // 0~1 ì‹œê°„ì„ StartPhase~1 êµ¬ê°„ìœ¼ë¡œ ë§µí•‘í•˜ì—¬ ì´ë™
             UpdatePositionMapped(path, timeRatio, startPhase);
 
             if (!hasCompletedOnce)
@@ -89,7 +89,7 @@ public class ObjectMover3D : MonoBehaviour
 
     private void UpdatePositionMapped(List<Vector3> path, float timeRatio, float startPhase)
     {
-        // timeRatio(0~1)¸¦ startPhase~1.0 »çÀÌÀÇ °ªÀ¸·Î º¯È¯
+        // timeRatio(0~1)ë¥¼ startPhase~1.0 ì‚¬ì´ì˜ ê°’ìœ¼ë¡œ ë³€í™˜
         float mappedProgress = Mathf.Lerp(startPhase, 1.0f, timeRatio);
         UpdatePosition(path, mappedProgress);
     }

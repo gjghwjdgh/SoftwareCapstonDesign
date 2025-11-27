@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
@@ -25,7 +25,7 @@ public class ARMarkerManager : MonoBehaviour
 
     void Awake()
     {
-        // FindAnyObjectByTypeÀº ÃÖ½Å À¯´ÏÆ¼ ¹öÀü È£È¯¿ë (±¸¹öÀüÀÌ¸é FindObjectOfType »ç¿ë)
+        // FindAnyObjectByTypeì€ ìµœì‹  ìœ ë‹ˆí‹° ë²„ì „ í˜¸í™˜ìš© (êµ¬ë²„ì „ì´ë©´ FindObjectOfType ì‚¬ìš©)
         XROrigin sessionOrigin = FindFirstObjectByType<XROrigin>();
         if (sessionOrigin != null) trackedImageManager = sessionOrigin.GetComponent<ARTrackedImageManager>();
 
@@ -79,15 +79,15 @@ public class ARMarkerManager : MonoBehaviour
                 {
                     Transform newTarget = Instantiate(targetPrefab, imageTransform.position, imageTransform.rotation).transform;
 
-                    // ¡Ú¡Ú¡Ú [Ãß°¡µÈ ºÎºĞ] TargetGroup¿¡ ³Ö°í ·Î±× ¾Ë¸² ¡Ú¡Ú¡Ú
+                    // â˜…â˜…â˜… [ì¶”ê°€ëœ ë¶€ë¶„] TargetGroupì— ë„£ê³  ë¡œê·¸ ì•Œë¦¼ â˜…â˜…â˜…
                     if (GameUIManager.Instance != null)
                     {
-                        // 1. ºÎ¸ğ ¼³Á¤
+                        // 1. ë¶€ëª¨ ì„¤ì •
                         if (GameUIManager.Instance.targetParent != null)
                         {
                             newTarget.SetParent(GameUIManager.Instance.targetParent);
                         }
-                        // 2. ¾Ë¸²
+                        // 2. ì•Œë¦¼
                         GameUIManager.Instance.NotifyTargetSpawned();
                     }
                     // -----------------------------------------------------

@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System.Collections.Generic;
 
 public class PathDrawer : MonoBehaviour
@@ -7,7 +7,7 @@ public class PathDrawer : MonoBehaviour
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
 
-    // ¡Ú¡Ú¡Ú ¿ÜºÎ¿¡¼­ °­Á¦·Î ÁöÁ¤ÇÏ´Â »ö»ó (±×·ì »ö»ó µî) ¡Ú¡Ú¡Ú
+    // â˜…â˜…â˜… ì™¸ë¶€ì—ì„œ ê°•ì œë¡œ ì§€ì •í•˜ëŠ” ìƒ‰ìƒ (ê·¸ë£¹ ìƒ‰ìƒ ë“±) â˜…â˜…â˜…
     private Color? overrideColor = null;
 
     public void InitializeCurve(List<Vector3> pathPoints)
@@ -18,7 +18,7 @@ public class PathDrawer : MonoBehaviour
         SetHighlight(false);
     }
 
-    // ¡Ú¡Ú¡Ú ÀÌ ÇÔ¼ö°¡ ¾ø¾î¼­ ¿À·ù°¡ ³µ½À´Ï´Ù. Ãß°¡ÇØÁÖ¼¼¿ä! ¡Ú¡Ú¡Ú
+    // â˜…â˜…â˜… ì´ í•¨ìˆ˜ê°€ ì—†ì–´ì„œ ì˜¤ë¥˜ê°€ ë‚¬ìŠµë‹ˆë‹¤. ì¶”ê°€í•´ì£¼ì„¸ìš”! â˜…â˜…â˜…
     public void SetColor(Color? color)
     {
         overrideColor = color;
@@ -29,19 +29,19 @@ public class PathDrawer : MonoBehaviour
     {
         if (highlighted)
         {
-            // ÇÏÀÌ¶óÀÌÆ® µÉ ¶§´Â ¹«Á¶°Ç Çü±¤»ö(Cyan)
+            // í•˜ì´ë¼ì´íŠ¸ ë  ë•ŒëŠ” ë¬´ì¡°ê±´ í˜•ê´‘ìƒ‰(Cyan)
             lineRenderer3D.startColor = lineRenderer3D.endColor = highlightColor;
         }
         else
         {
-            // Æò¼Ò¿¡´Â ÁöÁ¤µÈ ±×·ì »ö»ó ¶Ç´Â È¸»ö
+            // í‰ì†Œì—ëŠ” ì§€ì •ëœ ê·¸ë£¹ ìƒ‰ìƒ ë˜ëŠ” íšŒìƒ‰
             UpdateColor();
         }
     }
 
     private void UpdateColor()
     {
-        // overrideColor°¡ ÀÖÀ¸¸é(±×·ì »ö»ó) ±×°É ¾²°í, ¾øÀ¸¸é ±âº» È¸»ö(normalColor) »ç¿ë
+        // overrideColorê°€ ìˆìœ¼ë©´(ê·¸ë£¹ ìƒ‰ìƒ) ê·¸ê±¸ ì“°ê³ , ì—†ìœ¼ë©´ ê¸°ë³¸ íšŒìƒ‰(normalColor) ì‚¬ìš©
         Color finalColor = overrideColor.HasValue ? overrideColor.Value : normalColor;
         lineRenderer3D.startColor = lineRenderer3D.endColor = finalColor;
     }

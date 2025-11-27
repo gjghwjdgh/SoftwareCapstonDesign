@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using TMPro;
 
 public class TargetLabel : MonoBehaviour
@@ -11,7 +11,7 @@ public class TargetLabel : MonoBehaviour
         mainCamera = Camera.main;
     }
 
-    // ¿ÜºÎ¿¡¼­ ¼ıÀÚ¸¦ º¯°æÇÒ ¶§ È£Ãâ
+    // ì™¸ë¶€ì—ì„œ ìˆ«ìë¥¼ ë³€ê²½í•  ë•Œ í˜¸ì¶œ
     public void SetNumber(int number)
     {
         if (numberText != null)
@@ -20,12 +20,12 @@ public class TargetLabel : MonoBehaviour
         }
     }
 
-    // Ç×»ó Ä«¸Ş¶ó¸¦ ¹Ù¶óº¸°Ô ÇÔ (Billboard)
+    // í•­ìƒ ì¹´ë©”ë¼ë¥¼ ë°”ë¼ë³´ê²Œ í•¨ (Billboard)
     void LateUpdate()
     {
         if (mainCamera != null && numberText != null)
         {
-            // Äµ¹ö½º°¡ ¾Æ´Ï¶ó ÅØ½ºÆ®°¡ ´Ş¸° ¿ÀºêÁ§Æ® ÀüÃ¼¸¦ È¸Àü½ÃÅ´
+            // ìº”ë²„ìŠ¤ê°€ ì•„ë‹ˆë¼ í…ìŠ¤íŠ¸ê°€ ë‹¬ë¦° ì˜¤ë¸Œì íŠ¸ ì „ì²´ë¥¼ íšŒì „ì‹œí‚´
             transform.LookAt(transform.position + mainCamera.transform.rotation * Vector3.forward,
                              mainCamera.transform.rotation * Vector3.up);
         }

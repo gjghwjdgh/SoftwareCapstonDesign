@@ -1,10 +1,10 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System.Collections.Generic;
 
 public static class PathUtilities
 {
-    // 2Â÷ º£Áö¾î °î¼±(Quadratic Bezier Curve) À§ÀÇ ÇÑ Á¡À» °è»êÇÏ´Â ÇÔ¼ö
-    // p0: ½ÃÀÛÁ¡, p1: Á¶ÀıÁ¡, p2: ³¡Á¡, t: 0.0 ~ 1.0 »çÀÌÀÇ ºñÀ²
+    // 2ì°¨ ë² ì§€ì–´ ê³¡ì„ (Quadratic Bezier Curve) ìœ„ì˜ í•œ ì ì„ ê³„ì‚°í•˜ëŠ” í•¨ìˆ˜
+    // p0: ì‹œì‘ì , p1: ì¡°ì ˆì , p2: ëì , t: 0.0 ~ 1.0 ì‚¬ì´ì˜ ë¹„ìœ¨
     private static Vector3 GetQuadraticBezierPoint(Vector3 p0, Vector3 p1, Vector3 p2, float t)
     {
         t = Mathf.Clamp01(t);
@@ -14,7 +14,7 @@ public static class PathUtilities
                (t * t * p2);
     }
 
-    // 2Â÷ º£Áö¾î °î¼± °æ·Î¸¦ »ı¼ºÇÏ´Â ÇÔ¼ö
+    // 2ì°¨ ë² ì§€ì–´ ê³¡ì„  ê²½ë¡œë¥¼ ìƒì„±í•˜ëŠ” í•¨ìˆ˜
     public static List<Vector3> GenerateQuadraticBezierCurvePath(Vector3 startPoint, Vector3 controlPoint, Vector3 endPoint, int segmentCount)
     {
         List<Vector3> pathPoints = new List<Vector3>();

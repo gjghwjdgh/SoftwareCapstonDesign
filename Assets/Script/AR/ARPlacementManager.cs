@@ -1,16 +1,16 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 using System.Collections.Generic;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.InputSystem;
-using UnityEngine.EventSystems; // UI ÅÍÄ¡ ¹æÁö¿ë
+using UnityEngine.EventSystems; // UI í„°ì¹˜ ë°©ì§€ìš©
 
 [RequireComponent(typeof(ARRaycastManager))]
 public class ARPlacementManager : MonoBehaviour
 {
-    [Header("ÇÙ½É ¿¬°á")]
+    [Header("í•µì‹¬ ì—°ê²°")]
     public PathVisualizer pathVisualizer;
     public GameUIManager gameUIManager;
     public Button startAnalysisButton;
@@ -27,7 +27,7 @@ public class ARPlacementManager : MonoBehaviour
     {
         arRaycastManager = GetComponent<ARRaycastManager>();
         if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(false);
-        if (infoText != null) infoText.text = "¹Ù´ÚÀ» ºñÃß°í ½ÃÀÛ ÁöÁ¡À» ¹èÄ¡ÇÏ¼¼¿ä.";
+        if (infoText != null) infoText.text = "ë°”ë‹¥ì„ ë¹„ì¶”ê³  ì‹œì‘ ì§€ì ì„ ë°°ì¹˜í•˜ì„¸ìš”.";
     }
 
     void Update()
@@ -36,7 +36,7 @@ public class ARPlacementManager : MonoBehaviour
 
         if (Touchscreen.current == null || !Touchscreen.current.primaryTouch.press.wasPressedThisFrame) return;
 
-        // UI(·Î±×Ã¢ µî) À§¿¡ ¼Õ°¡¶ôÀÌ ÀÖÀ¸¸é ÅÍÄ¡ ¹«½Ã
+        // UI(ë¡œê·¸ì°½ ë“±) ìœ„ì— ì†ê°€ë½ì´ ìˆìœ¼ë©´ í„°ì¹˜ ë¬´ì‹œ
         if (EventSystem.current.IsPointerOverGameObject(Touchscreen.current.primaryTouch.touchId.ReadValue())) return;
 
         Vector2 touchPosition = Touchscreen.current.primaryTouch.position.ReadValue();
@@ -47,28 +47,28 @@ public class ARPlacementManager : MonoBehaviour
             if (placedStartPoint == null)
             {
                 placedStartPoint = Instantiate(startPointPrefab, hitPose.position, hitPose.rotation).transform;
-                if (infoText != null) infoText.text = "¸ñÇ¥ ÁöÁ¡À» ¹èÄ¡ÇÏ¼¼¿ä.";
+                if (infoText != null) infoText.text = "ëª©í‘œ ì§€ì ì„ ë°°ì¹˜í•˜ì„¸ìš”.";
                 pathVisualizer.startPoint = placedStartPoint;
             }
             else
             {
                 Transform newTarget = Instantiate(targetPrefab, hitPose.position, hitPose.rotation).transform;
 
-                // ¡Ú¡Ú¡Ú [Ãß°¡µÈ ºÎºĞ] TargetGroup¿¡ ³Ö°í ·Î±× ¾Ë¸² ¡Ú¡Ú¡Ú
+                // â˜…â˜…â˜… [ì¶”ê°€ëœ ë¶€ë¶„] TargetGroupì— ë„£ê³  ë¡œê·¸ ì•Œë¦¼ â˜…â˜…â˜…
                 if (GameUIManager.Instance != null)
                 {
-                    // 1. ºÎ¸ğ ¼³Á¤ (TargetGroup ¹ØÀ¸·Î)
+                    // 1. ë¶€ëª¨ ì„¤ì • (TargetGroup ë°‘ìœ¼ë¡œ)
                     if (GameUIManager.Instance.targetParent != null)
                     {
                         newTarget.SetParent(GameUIManager.Instance.targetParent);
                     }
-                    // 2. »õ Å¸°Ù »ı¼º ¾Ë¸² (·Î±× ÃÊ±âÈ­)
+                    // 2. ìƒˆ íƒ€ê²Ÿ ìƒì„± ì•Œë¦¼ (ë¡œê·¸ ì´ˆê¸°í™”)
                     GameUIManager.Instance.NotifyTargetSpawned();
                 }
                 // -----------------------------------------------------
 
                 placedTargets.Add(newTarget);
-                if (infoText != null) infoText.text = $"{placedTargets.Count}°³ÀÇ ¸ñÇ¥ ÁöÁ¡ ¹èÄ¡ ¿Ï·á.";
+                if (infoText != null) infoText.text = $"{placedTargets.Count}ê°œì˜ ëª©í‘œ ì§€ì  ë°°ì¹˜ ì™„ë£Œ.";
                 if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(true);
                 pathVisualizer.targets = placedTargets;
                 pathVisualizer.GenerateAndShowAllPaths();

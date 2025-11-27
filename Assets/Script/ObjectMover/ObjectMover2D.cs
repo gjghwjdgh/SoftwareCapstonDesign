@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
@@ -15,7 +15,7 @@ public class ObjectMover2D : MonoBehaviour
         rectTransform = GetComponent<RectTransform>();
     }
 
-    //  --- ÇÙ½É º¯°æ: ÀÎÀÚ·Î 2D ½ºÅ©¸° °æ·Î°¡ ¾Æ´Ñ 3D ¿ùµå °æ·Î¸¦ ¹Ş½À´Ï´Ù ---
+    //  --- í•µì‹¬ ë³€ê²½: ì¸ìë¡œ 2D ìŠ¤í¬ë¦° ê²½ë¡œê°€ ì•„ë‹Œ 3D ì›”ë“œ ê²½ë¡œë¥¼ ë°›ìŠµë‹ˆë‹¤ ---
     public IEnumerator MoveOnScreen(List<Vector3> worldPath, float duration, System.Action<List<Vector2>, List<float>> onComplete)
     {
         List<Vector2> targetScreenPath = new List<Vector2>();
@@ -30,7 +30,7 @@ public class ObjectMover2D : MonoBehaviour
                 float progress = elapsedTime / duration;
                 float curveProgress = speedCurve.Evaluate(progress);
 
-                // --- ÇÙ½É º¯°æ: 3D °æ·Î¸¦ ±âÁØÀ¸·Î ÇöÀç ¿ùµå À§Ä¡¸¦ °è»ê ---
+                // --- í•µì‹¬ ë³€ê²½: 3D ê²½ë¡œë¥¼ ê¸°ì¤€ìœ¼ë¡œ í˜„ì¬ ì›”ë“œ ìœ„ì¹˜ë¥¼ ê³„ì‚° ---
                 Vector3 currentWorldPos;
                 if (worldPath.Count < 2)
                 {
@@ -45,7 +45,7 @@ public class ObjectMover2D : MonoBehaviour
                     currentWorldPos = Vector3.Lerp(worldPath[currentIndex], worldPath[nextIndex], segmentProgress);
                 }
 
-                // --- ÇÙ½É º¯°æ: °è»êµÈ ¿ùµå À§Ä¡¸¦ '¸Å ÇÁ·¹ÀÓ' ½ºÅ©¸° À§Ä¡·Î º¯È¯ ---
+                // --- í•µì‹¬ ë³€ê²½: ê³„ì‚°ëœ ì›”ë“œ ìœ„ì¹˜ë¥¼ 'ë§¤ í”„ë ˆì„' ìŠ¤í¬ë¦° ìœ„ì¹˜ë¡œ ë³€í™˜ ---
                 rectTransform.position = mainCamera.WorldToScreenPoint(currentWorldPos);
 
                 targetScreenPath.Add(rectTransform.position);
