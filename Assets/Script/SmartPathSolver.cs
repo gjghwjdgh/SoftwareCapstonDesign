@@ -41,8 +41,8 @@ public class SmartPathSolver : MonoBehaviour
 
     private class TargetMeta
     {
-        public int originalIndex;   // 설치된 순서
-        public int sortedIndex;     // ★ 화면 왼쪽부터 1,2,3...
+        public int originalIndex;
+        public int sortedIndex;
         public string visualID;
         public Transform transform;
         public Vector3 worldPos;
@@ -50,8 +50,6 @@ public class SmartPathSolver : MonoBehaviour
         public float distance3D;
         public float rawAngle;
         public float relativeAngle;
-
-        public int parentID; // Union-Find 루트
         public float assignedPhase;
         public Vector3 assignedControlPoint;
         public bool isStraight = false;
@@ -66,7 +64,7 @@ public class SmartPathSolver : MonoBehaviour
     // =================================================================================
     public List<PathResultData> Solve(Transform startPoint, List<Transform> targets, Camera cam)
     {
-        LogToUI("\n──────── [스마트 경로 분석 V5: 체인확장] ────────");
+        LogToUI("\n──────── [스마트 경로 분석 V7: 실시간 방출] ────────");
 
         if (cam == null || startPoint == null || targets == null || targets.Count == 0)
             return new List<PathResultData>();
@@ -77,9 +75,7 @@ public class SmartPathSolver : MonoBehaviour
         debugStartPos = startPoint.position;
         float screenWidth = Screen.width;
 
-        // ---------------------------------------------------------
-        // [1] 데이터 수집
-        // ---------------------------------------------------------
+        // 1. 데이터 수집
         for (int i = 0; i < targets.Count; i++)
         {
             if (targets[i] == null) continue;
@@ -109,9 +105,7 @@ public class SmartPathSolver : MonoBehaviour
 
         if (metas.Count == 0) return new List<PathResultData>();
 
-        // ---------------------------------------------------------
-        // [2] 정렬 (왼쪽 -> 오른쪽) 및 인덱스 재부여
-        // ---------------------------------------------------------
+        // 2. 정렬 및 인덱스 재부여
         metas.Sort((a, b) => b.rawAngle.CompareTo(a.rawAngle));
 
         float centerOffsetAngle = metas[metas.Count / 2].rawAngle;
@@ -123,142 +117,99 @@ public class SmartPathSolver : MonoBehaviour
 
         for (int i = 0; i < metas.Count; i++)
         {
-            metas[i].sortedIndex = i + 1; // 1부터 시작
-            metas[i].parentID = i;        // Union-Find 초기화
+            metas[i].sortedIndex = i + 1;
         }
 
         // ---------------------------------------------------------
-        // [3] 그룹핑 (전체 탐색 & 체인 연결)
+        // [단계 3] 그룹핑 로직 (실시간 방출 및 재시작)
         // ---------------------------------------------------------
         float distLimitPx = screenWidth * MaxScreenDistRatio;
-        LogToUI($"[조건] 각도 {AngleThreshold}° / 거리 {distLimitPx:F0}px");
+        LogToUI($"[조건] 각도 {AngleThreshold}° / 거리 {distLimitPx:F0}px / 그룹폭 {MaxGroupSpanAngle}°");
+        LogToUI("--- 상세 과정 ---");
 
-        // i: 기준 타겟
+        List<List<TargetMeta>> finalGroups = new List<List<TargetMeta>>();
+        List<TargetMeta> loners = new List<TargetMeta>();
+
+        // 아직 그룹이 없는 타겟들의 리스트
+        HashSet<TargetMeta> ungroupedMetas = new HashSet<TargetMeta>(metas);
+
         for (int i = 0; i < metas.Count; i++)
         {
-            TargetMeta A = metas[i];
+            TargetMeta startNode = metas[i];
 
-            // j: 내 뒤에 있는 후보들 (끝까지 검사)
+            // 이미 다른 그룹에 속했으면 건너뜀
+            if (!ungroupedMetas.Contains(startNode)) continue;
+
+            // 새 그룹 시작
+            List<TargetMeta> currentGroup = new List<TargetMeta>();
+            currentGroup.Add(startNode);
+            ungroupedMetas.Remove(startNode);
+
+            LogToUI($"▶ [{startNode.sortedIndex}]부터 새 그룹 탐색 시작");
+
+            // 체인 연결
             for (int j = i + 1; j < metas.Count; j++)
             {
-                TargetMeta B = metas[j];
+                TargetMeta currentNode = currentGroup.Last();
+                TargetMeta nextNode = metas[j];
 
-                // 1. 각도 검사
-                float angleDiff = Mathf.Abs(Mathf.DeltaAngle(A.relativeAngle, B.relativeAngle));
+                if (!ungroupedMetas.Contains(nextNode)) continue;
 
-                // 정렬되어 있으므로 각도 범위를 벗어나면, 그 뒤에 있는 애들도 다 벗어난 것임.
-                // 따라서 여기서 break 하는 것은 안전하며 효율적입니다.
-                if (angleDiff > AngleThreshold) break;
+                float angleDiff = Mathf.Abs(Mathf.DeltaAngle(currentNode.relativeAngle, nextNode.relativeAngle));
+                float distPx = Vector2.Distance(currentNode.screenPos, nextNode.screenPos);
 
-                // 2. 거리 검사
-                float distPx = Vector2.Distance(A.screenPos, B.screenPos);
-
-                string logHeader = $"[{A.sortedIndex}]→[{B.sortedIndex}]";
-
-                if (distPx <= distLimitPx)
+                // 일단 연결 조건 (각도 & 거리)
+                if (angleDiff <= AngleThreshold && distPx <= distLimitPx)
                 {
-                    // ★ 연결 성공 ★
-                    UnionGroups(metas, i, j);
-                    LogToUI($"{logHeader} <color=green>[연결]</color> (거리 {distPx:F0}px OK)");
+                    // 연결하기 전에 그룹폭 검사
+                    float potentialSpan = Mathf.Abs(Mathf.DeltaAngle(currentGroup.First().relativeAngle, nextNode.relativeAngle));
 
-                    // ※ 수정 사항: 여기서 break 하지 않음! 
-                    // 1번이 3번이랑 연결돼도, 1번은 4번이랑도 연결될 수 있음 (문어발 연결 허용)
-                    // 그래야 그룹이 최대한 커질 수 있음.
-                }
-                else
-                {
-                    LogToUI($"{logHeader} <color=orange>[패스]</color> (거리 멂: {distPx:F0}px)");
-                }
-            }
-        }
-
-        // ---------------------------------------------------------
-        // [3.5] 그룹 정리 및 가지치기 (Pruning)
-        // ---------------------------------------------------------
-        Dictionary<int, List<TargetMeta>> tempGroups = new Dictionary<int, List<TargetMeta>>();
-        for (int i = 0; i < metas.Count; i++)
-        {
-            int root = FindRoot(metas, i);
-            if (!tempGroups.ContainsKey(root)) tempGroups[root] = new List<TargetMeta>();
-            tempGroups[root].Add(metas[i]);
-        }
-
-        List<List<TargetMeta>> finalRealGroups = new List<List<TargetMeta>>();
-        List<TargetMeta> loners = new List<TargetMeta>(); // 쫓겨나거나 외톨이인 애들
-
-        foreach (var kvp in tempGroups)
-        {
-            List<TargetMeta> group = kvp.Value;
-
-            // 1명짜리 그룹은 바로 외톨이
-            if (group.Count <= 1)
-            {
-                loners.AddRange(group);
-                continue;
-            }
-
-            // ★ 오른쪽 끝부터 가지치기 반복 ★
-            while (group.Count > 1)
-            {
-                // 그룹의 양끝 각도 차이 계산
-                float totalSpan = Mathf.Abs(Mathf.DeltaAngle(group[0].relativeAngle, group.Last().relativeAngle));
-
-                if (totalSpan > MaxGroupSpanAngle)
-                {
-                    // 범위 초과! 맨 오른쪽(Last) 퇴출
-                    TargetMeta removed = group.Last();
-                    group.RemoveAt(group.Count - 1);
-
-                    loners.Add(removed); // 퇴출된 녀석은 외톨이 연합으로
-
-                    // ★ 퇴출 로그 ★
-                    LogToUI($"<color=red>[퇴출]</color> 타겟 [{removed.sortedIndex}] -> 그룹 과부하(폭 {totalSpan:F1}°)로 방출됨.");
-                }
-                else
-                {
-                    break; // 통과
+                    if (potentialSpan <= MaxGroupSpanAngle)
+                    {
+                        // 연결 성공!
+                        currentGroup.Add(nextNode);
+                        ungroupedMetas.Remove(nextNode);
+                        LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=green>[연결]</color>");
+                    }
+                    else
+                    {
+                        // 그룹폭 초과로 방출
+                        LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=red>[방출]</color> (그룹폭 {potentialSpan:F1}° 초과)");
+                        // nextNode는 연결 안 되고 외톨이로 남음 (다음 루프에서 처리)
+                    }
                 }
             }
 
-            // 가지치기 후 남은 인원 확인
-            if (group.Count > 1) finalRealGroups.Add(group);
-            else loners.AddRange(group); // 다 짤리고 혼자 남았으면 외톨이
+            // 완성된 그룹 처리
+            if (currentGroup.Count > 1) finalGroups.Add(currentGroup);
+            else loners.AddRange(currentGroup); // 혼자 남았으면 외톨이
         }
 
-        LogToUI($"[확정] 정규 그룹 {finalRealGroups.Count}개 / 외톨이 연합 {loners.Count}명");
+        LogToUI($"[확정] 정규 그룹 {finalGroups.Count}개 / 외톨이 {loners.Count}명");
 
-        // ---------------------------------------------------------
-        // [4] 페이즈 및 곡선 할당
-        // ---------------------------------------------------------
-
-        // A. 정규 그룹 처리
+        // 4. 페이즈 및 곡선 할당
         int colorIdx = 0;
-        foreach (var group in finalRealGroups)
+        foreach (var group in finalGroups)
         {
             Color col = debugColors[colorIdx % debugColors.Length];
             colorIdx++;
             foreach (var m in group) m.debugColor = col;
-
             ProcessGroupRules(group, startPoint.position, startScreenPos, cam);
         }
 
-        // B. 외톨이 연합 처리 (페이즈 그룹화 + 개별 곡선)
         if (loners.Count > 0)
         {
-            // 외톨이끼리도 길이순으로 페이즈 배정 (요청사항)
             ProcessPhaseOnly(loners);
-
             foreach (var m in loners)
             {
                 m.debugColor = Color.white;
-                // 외톨이는 굳이 강하게 휠 필요 없이 중앙 기준으로 살짝만 휨 (혹은 직선)
                 ProcessSingleLonerCurve(m, startPoint.position, startScreenPos, cam);
             }
         }
 
         debugMetas = metas;
 
-        // [5] 결과 생성
+        // 5. 결과 생성
         List<PathResultData> results = new List<PathResultData>();
         foreach (var m in metas)
         {
@@ -284,21 +235,6 @@ public class SmartPathSolver : MonoBehaviour
     // ---------------------------------------------------------
     // [헬퍼 함수들]
     // ---------------------------------------------------------
-
-    private int FindRoot(List<TargetMeta> metas, int index)
-    {
-        if (metas[index].parentID != index)
-            metas[index].parentID = FindRoot(metas, metas[index].parentID);
-        return metas[index].parentID;
-    }
-
-    private void UnionGroups(List<TargetMeta> metas, int indexA, int indexB)
-    {
-        int rootA = FindRoot(metas, indexA);
-        int rootB = FindRoot(metas, indexB);
-        if (rootA != rootB) metas[rootB].parentID = rootA;
-    }
-
     private void ProcessPhaseOnly(List<TargetMeta> members)
     {
         int N = members.Count;
@@ -312,7 +248,6 @@ public class SmartPathSolver : MonoBehaviour
 
     private void ProcessSingleLonerCurve(TargetMeta m, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
-        // 외톨이는 화면 중심 기준 반대 방향으로 살짝 휨 (충돌 회피용)
         Vector2 screenCenter = new Vector2(Screen.width, Screen.height) * 0.5f;
         bool isLeft = m.screenPos.x < screenCenter.x;
 
@@ -327,10 +262,8 @@ public class SmartPathSolver : MonoBehaviour
 
     private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
-        // 1. 페이즈 할당
         ProcessPhaseOnly(members);
 
-        // 2. 고밀도 예외
         int N = members.Count;
         float minX = members.Min(m => m.screenPos.x);
         float maxX = members.Max(m => m.screenPos.x);
@@ -347,12 +280,10 @@ public class SmartPathSolver : MonoBehaviour
             return;
         }
 
-        // 3. 구역 기반 강도
         float avgRelAngle = members.Average(m => m.relativeAngle);
         float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
         float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
 
-        // 4. 곡선 패턴
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
