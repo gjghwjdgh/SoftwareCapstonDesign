@@ -13,14 +13,21 @@ public class PathResultData
 
 public class SmartPathSolver : MonoBehaviour
 {
+    // [평가 모드]
+    public enum EvaluationMode
+    {
+        Full,       // 페이즈 O, 곡선 O
+        PhaseOnly,  // 페이즈 O, 곡선 X (직선)
+        CurveOnly,  // 페이즈 X (0), 곡선 O
+        None        // 페이즈 X (0), 곡선 X (직선)
+    }
+
+    [Header("0. 평가 모드")]
+    public EvaluationMode currentMode = EvaluationMode.Full;
+
     [Header("1. 그룹핑 설정")]
-    [Tooltip("검사할 각도 범위 (이 범위를 벗어나면 아예 검사 안함)")]
     public float AngleThreshold = 15.0f;
-
-    [Tooltip("화면상 거리 제한 (화면폭 x 비율)")]
     public float MaxScreenDistRatio = 0.2f;
-
-    [Tooltip("그룹 전체 각도가 이 값을 넘으면 오른쪽부터 잘라냄")]
     public float MaxGroupSpanAngle = 45.0f;
 
     [Header("2. 곡선 및 구역 설정")]
@@ -50,6 +57,8 @@ public class SmartPathSolver : MonoBehaviour
         public float distance3D;
         public float rawAngle;
         public float relativeAngle;
+
+        // 결과값
         public float assignedPhase;
         public Vector3 assignedControlPoint;
         public bool isStraight = false;
@@ -64,7 +73,7 @@ public class SmartPathSolver : MonoBehaviour
     // =================================================================================
     public List<PathResultData> Solve(Transform startPoint, List<Transform> targets, Camera cam)
     {
-        LogToUI("\n──────── [스마트 경로 분석 V7: 실시간 방출] ────────");
+        LogToUI($"\n──────── [스마트 경로 분석] 모드: {currentMode} ────────");
 
         if (cam == null || startPoint == null || targets == null || targets.Count == 0)
             return new List<PathResultData>();
@@ -100,6 +109,13 @@ public class SmartPathSolver : MonoBehaviour
             Vector2 dir = meta.screenPos - startScreenPos;
             meta.rawAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 
+            // ★ [모드 초기화] 모드에 따라 기본값 강제 설정
+            if (currentMode == EvaluationMode.CurveOnly || currentMode == EvaluationMode.None)
+                meta.assignedPhase = 0.0f; // 페이즈 끄기 (시작점)
+
+            if (currentMode == EvaluationMode.PhaseOnly || currentMode == EvaluationMode.None)
+                meta.isStraight = true;    // 곡선 끄기 (직선)
+
             metas.Add(meta);
         }
 
@@ -121,23 +137,21 @@ public class SmartPathSolver : MonoBehaviour
         }
 
         // ---------------------------------------------------------
-        // [단계 3] 그룹핑 로직 (실시간 방출 및 재시작)
+        // [단계 3] 그룹핑 로직 (상세 로그 & 체인 연결 & 가지치기)
         // ---------------------------------------------------------
         float distLimitPx = screenWidth * MaxScreenDistRatio;
-        LogToUI($"[조건] 각도 {AngleThreshold}° / 거리 {distLimitPx:F0}px / 그룹폭 {MaxGroupSpanAngle}°");
+        LogToUI($"[조건] 각도 {AngleThreshold}° / 거리 {distLimitPx:F0}px");
         LogToUI("--- 상세 과정 ---");
 
         List<List<TargetMeta>> finalGroups = new List<List<TargetMeta>>();
         List<TargetMeta> loners = new List<TargetMeta>();
 
-        // 아직 그룹이 없는 타겟들의 리스트
+        // 아직 그룹 없는 애들
         HashSet<TargetMeta> ungroupedMetas = new HashSet<TargetMeta>(metas);
 
         for (int i = 0; i < metas.Count; i++)
         {
             TargetMeta startNode = metas[i];
-
-            // 이미 다른 그룹에 속했으면 건너뜀
             if (!ungroupedMetas.Contains(startNode)) continue;
 
             // 새 그룹 시작
@@ -158,31 +172,37 @@ public class SmartPathSolver : MonoBehaviour
                 float angleDiff = Mathf.Abs(Mathf.DeltaAngle(currentNode.relativeAngle, nextNode.relativeAngle));
                 float distPx = Vector2.Distance(currentNode.screenPos, nextNode.screenPos);
 
-                // 일단 연결 조건 (각도 & 거리)
-                if (angleDiff <= AngleThreshold && distPx <= distLimitPx)
+                // 각도 범위 밖이면 중단 (정렬되어 있으므로)
+                if (angleDiff > AngleThreshold) break;
+
+                // 거리 조건 확인
+                if (distPx <= distLimitPx)
                 {
-                    // 연결하기 전에 그룹폭 검사
+                    // 그룹폭 검사 (Pruning)
                     float potentialSpan = Mathf.Abs(Mathf.DeltaAngle(currentGroup.First().relativeAngle, nextNode.relativeAngle));
 
                     if (potentialSpan <= MaxGroupSpanAngle)
                     {
-                        // 연결 성공!
+                        // 연결 성공
                         currentGroup.Add(nextNode);
                         ungroupedMetas.Remove(nextNode);
                         LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=green>[연결]</color>");
                     }
                     else
                     {
-                        // 그룹폭 초과로 방출
-                        LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=red>[방출]</color> (그룹폭 {potentialSpan:F1}° 초과)");
-                        // nextNode는 연결 안 되고 외톨이로 남음 (다음 루프에서 처리)
+                        // 그룹폭 초과 -> 방출 (연결 안 함)
+                        LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=red>[방출]</color> (폭 {potentialSpan:F1}° 초과)");
                     }
+                }
+                else
+                {
+                    // 거리가 멀어서 패스
+                    LogToUI($"   └ [{currentNode.sortedIndex}]→[{nextNode.sortedIndex}] <color=orange>[패스]</color> (거리 멂)");
                 }
             }
 
-            // 완성된 그룹 처리
             if (currentGroup.Count > 1) finalGroups.Add(currentGroup);
-            else loners.AddRange(currentGroup); // 혼자 남았으면 외톨이
+            else loners.AddRange(currentGroup);
         }
 
         LogToUI($"[확정] 정규 그룹 {finalGroups.Count}개 / 외톨이 {loners.Count}명");
@@ -194,6 +214,7 @@ public class SmartPathSolver : MonoBehaviour
             Color col = debugColors[colorIdx % debugColors.Length];
             colorIdx++;
             foreach (var m in group) m.debugColor = col;
+
             ProcessGroupRules(group, startPoint.position, startScreenPos, cam);
         }
 
@@ -218,6 +239,12 @@ public class SmartPathSolver : MonoBehaviour
             res.phaseValue = m.assignedPhase;
             res.overrideColor = m.debugColor;
 
+            // ★ [최종 확인] 모드가 직선 강제면 여기서도 확실히 직선화
+            if (currentMode == EvaluationMode.PhaseOnly || currentMode == EvaluationMode.None)
+            {
+                m.isStraight = true;
+            }
+
             if (m.isStraight)
             {
                 res.pathPoints = new List<Vector3> { startPoint.position, m.worldPos };
@@ -235,8 +262,16 @@ public class SmartPathSolver : MonoBehaviour
     // ---------------------------------------------------------
     // [헬퍼 함수들]
     // ---------------------------------------------------------
+
     private void ProcessPhaseOnly(List<TargetMeta> members)
     {
+        // ★ [모드 체크] 페이즈 끄는 모드면 0.0 (시작점) 고정
+        if (currentMode == EvaluationMode.CurveOnly || currentMode == EvaluationMode.None)
+        {
+            foreach (var m in members) m.assignedPhase = 0.0f;
+            return;
+        }
+
         int N = members.Count;
         var sortedByLen = members.OrderByDescending(m => m.distance3D).ToList();
         float M = N + 2.0f;
@@ -248,6 +283,13 @@ public class SmartPathSolver : MonoBehaviour
 
     private void ProcessSingleLonerCurve(TargetMeta m, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
+        // ★ [모드 체크] 직선 모드면 스킵
+        if (currentMode == EvaluationMode.PhaseOnly || currentMode == EvaluationMode.None)
+        {
+            m.isStraight = true;
+            return;
+        }
+
         Vector2 screenCenter = new Vector2(Screen.width, Screen.height) * 0.5f;
         bool isLeft = m.screenPos.x < screenCenter.x;
 
@@ -262,14 +304,23 @@ public class SmartPathSolver : MonoBehaviour
 
     private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
+        // 1. 페이즈 할당 (모드 체크 내장됨)
         ProcessPhaseOnly(members);
+
+        // ★ [모드 체크] 곡선 안 쓰는 모드면 직선화하고 종료
+        if (currentMode == EvaluationMode.PhaseOnly || currentMode == EvaluationMode.None)
+        {
+            foreach (var m in members) m.isStraight = true;
+            return;
+        }
 
         int N = members.Count;
         float minX = members.Min(m => m.screenPos.x);
         float maxX = members.Max(m => m.screenPos.x);
         float widthRatio = (maxX - minX) / Screen.width;
 
-        if (N >= HighDensityCount && widthRatio < 0.2f)
+        // 고밀도 예외 (Full 모드일 때만)
+        if (currentMode == EvaluationMode.Full && N >= HighDensityCount && widthRatio < 0.2f)
         {
             LogToUI($"[고밀도] 그룹 직선화 ({N}개)");
             foreach (var m in members)
@@ -280,10 +331,12 @@ public class SmartPathSolver : MonoBehaviour
             return;
         }
 
+        // 구역 진단
         float avgRelAngle = members.Average(m => m.relativeAngle);
         float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
         float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
 
+        // 곡선 계산
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
@@ -295,9 +348,14 @@ public class SmartPathSolver : MonoBehaviour
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
-            Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
+
+            // ★ 수정: 상하 곡선 시 비틀기 제거 -> 순수 수직 사용
+            // 아래는 단순 상/하 벡터
+            Vector3 upVec = visualUp;
+            Vector3 downVec = -visualUp;
 
             Vector3 bendVector = Vector3.zero;
+            bool isVertical = false; // 수직 여부 체크
             bool isLeftInGroup = (i < centerIdx);
 
             if (N % 2 == 1 && i == centerIdx) m.isStraight = true;
@@ -310,13 +368,21 @@ public class SmartPathSolver : MonoBehaviour
                 if (isLeftInGroup)
                 {
                     if (i % 2 == 0) bendVector = -visualRight;
-                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized;
+                    else
+                    {
+                        bendVector = upVec; // 위쪽
+                        isVertical = true;
+                    }
                 }
                 else
                 {
                     int rIdx = i - centerIdx;
                     if (rIdx % 2 == 0) bendVector = visualRight;
-                    else bendVector = downTwist;
+                    else
+                    {
+                        bendVector = downVec; // 아래쪽
+                        isVertical = true;
+                    }
                 }
             }
 
@@ -325,6 +391,10 @@ public class SmartPathSolver : MonoBehaviour
             else if (m == farthest) ratio = CurveRatioStrong * 1.2f;
 
             float finalOffset = m.distance3D * ratio * zoneMultiplier;
+
+            // ★ [수정] 수직(위/아래) 방향일 경우, 강도를 5배(0.2배) 약하게 적용
+            if (isVertical) finalOffset *= 0.2f;
+
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
             m.assignedControlPoint = mid + (bendVector * finalOffset);
         }

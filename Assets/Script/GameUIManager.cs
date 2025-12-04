@@ -282,4 +282,60 @@ public class GameUIManager : MonoBehaviour
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPosition, null, out Vector2 localPoint);
         return localPoint;
     }
+    // =================================================================================
+    // [기능 4] 알고리즘 모드 변경 (Dropdown 연결용)
+    // =================================================================================
+    public void SetAlgorithmMode(int modeIndex)
+    {
+        if (pathSolver != null)
+        {
+            // 1. 로그 초기화 (기존 로그 삭제)
+            ClearLog();
+
+            // 2. 모드 값 변경
+            pathSolver.currentMode = (SmartPathSolver.EvaluationMode)modeIndex;
+            Log($"=== [설정 변경] 모드: {pathSolver.currentMode} ===");
+
+            // 3. 타겟이 있다면 즉시 화면(선 + 점) 강제 갱신
+            if (pathVisualizer != null && pathVisualizer.targets != null && pathVisualizer.targets.Count > 0)
+            {
+                RefreshCurrentVisuals();
+            }
+        }
+    }
+
+    // 화면 강제 갱신 함수 (Solver 재실행 -> 로그 다시 찍힘)
+    private void RefreshCurrentVisuals()
+    {
+        // A. 기존 움직임 무조건 정지
+        if (pursuitMover3D != null)
+        {
+            pursuitMover3D.StopAllMovements();
+        }
+
+        // B. Solver 재계산 (이 과정에서 Solver가 새로운 로그를 출력함)
+        var updatedData = pathSolver.Solve(
+            pathVisualizer.startPoint,
+            pathVisualizer.targets,
+            Camera.main
+        );
+
+        // C. 선(LineRenderer) 다시 그리기
+        pathVisualizer.DrawSolvedPaths(updatedData);
+
+        // D. 도우미 객체 다시 출발시키기
+        if (pursuitMover3D != null)
+        {
+            foreach (var data in updatedData)
+            {
+                pursuitMover3D.StartMovementWithPhase(
+                    data.pathPoints,
+                    travelDuration,
+                    data.phaseValue,
+                    data.overrideColor,
+                    null
+                );
+            }
+        }
+    }
 }
