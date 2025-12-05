@@ -32,7 +32,7 @@ public class GameUIManager : MonoBehaviour
 
     [Header("설정")]
     public SmartPathSolver pathSolver;
-    public Transform targetParent; // ★ 여기가 TargetGroup이 들어갈 곳
+    public Transform targetParent;
     public float travelDuration = 3.0f;
 
     [Range(0f, 1f)] public float shapeWeight = 0.8f;
@@ -60,30 +60,21 @@ public class GameUIManager : MonoBehaviour
         if (pathVisualizer == null) pathVisualizer = FindFirstObjectByType<PathVisualizer>();
     }
 
-    // ★★★ [추가된 기능] 타겟이 생길 때마다 호출됨
     public void NotifyTargetSpawned()
     {
-        ClearLog(); // 로그 화면 지우기
+        ClearLog();
         Log("=== [새로운 타겟 생성됨] 로그 대기 중 ===");
         Log("타겟이 추가되었습니다. [분석 시작]을 누르면 상세 계산이 표시됩니다.");
-
-        // 안내 문구 변경
         if (infoText != null) infoText.text = "타겟 배치 중...";
     }
 
-    // [기능] 완전 초기화 (Reset 버튼)
     public void OnClick_ResetAll()
     {
-        // 1. AR 세션 리셋 (공간 인식 정보 날리기)
         ARSession arSession = FindFirstObjectByType<ARSession>();
         if (arSession != null) arSession.Reset();
-
-        // 2. 씬 새로고침 (가장 확실한 초기화)
-        // TargetGroup 아래 있는 애들도 씬이 다시 로드되면서 다 사라집니다.
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
-    // [기능] 로그 창 열기/닫기
     public void OnClick_ToggleLog(bool show)
     {
         if (logPanel != null) logPanel.SetActive(show);
@@ -96,7 +87,6 @@ public class GameUIManager : MonoBehaviour
             logContentText.text += $"<color=yellow>[{System.DateTime.Now:HH:mm:ss}]</color> {message}\n";
         }
         Debug.Log(message);
-
         if (logScrollView != null)
         {
             Canvas.ForceUpdateCanvases();
@@ -109,10 +99,52 @@ public class GameUIManager : MonoBehaviour
         if (logContentText != null) logContentText.text = "";
     }
 
-    // [기능] 분석 시작
+    // 모드 변경 함수
+    public void SetAlgorithmMode(int modeIndex)
+    {
+        if (pathSolver != null)
+        {
+            pathSolver.currentMode = (SmartPathSolver.EvaluationMode)modeIndex;
+            Log($"[설정 변경] 모드: {pathSolver.currentMode}");
+
+            if (pathVisualizer != null && pathVisualizer.targets != null && pathVisualizer.targets.Count > 0)
+            {
+                RefreshCurrentVisuals();
+            }
+        }
+    }
+
+    private void RefreshCurrentVisuals()
+    {
+        if (pursuitMover3D != null) pursuitMover3D.StopAllMovements();
+
+        var updatedData = pathSolver.Solve(
+            pathVisualizer.startPoint,
+            pathVisualizer.targets,
+            Camera.main
+        );
+
+        pathVisualizer.DrawSolvedPaths(updatedData);
+
+        if (pursuitMover3D != null)
+        {
+            foreach (var data in updatedData)
+            {
+                pursuitMover3D.StartMovementWithPhase(
+                    data.pathPoints,
+                    travelDuration,
+                    data.phaseValue,
+                    data.overrideColor,
+                    null
+                );
+            }
+        }
+    }
+
     public void StartAnalysis()
     {
         if (isAnalyzing) return;
+        if (pursuitMover3D != null) pursuitMover3D.StopAllMovements();
         StartCoroutine(RunAllPursuitsAndDrawAndAnalyze());
     }
 
@@ -120,9 +152,10 @@ public class GameUIManager : MonoBehaviour
     {
         isAnalyzing = true;
 
-        // 로그 출력 시작
         ClearLog();
         Log(">>> [분석 시작] 버튼 클릭됨");
+
+        if (pursuitMover3D != null) pursuitMover3D.StopAllMovements();
 
         if (placementManager != null) placementManager.EnterAnalysisState();
         if (markerManager != null) markerManager.EnterAnalysisState();
@@ -130,7 +163,6 @@ public class GameUIManager : MonoBehaviour
         pathVisualizer.HighlightPath(-1);
         if (infoText != null) infoText.text = "경로 계산 중...";
 
-        // 타겟 확인
         if (pathVisualizer.targets == null || pathVisualizer.targets.Count == 0)
         {
             Log("<color=red>오류: 타겟이 없습니다.</color>");
@@ -144,7 +176,6 @@ public class GameUIManager : MonoBehaviour
 
         Log($"Solver 알고리즘 실행 (타겟 수: {pathVisualizer.targets.Count}개)");
 
-        // 계산 실행
         List<PathResultData> solvedPaths = pathSolver.Solve(
             pathVisualizer.startPoint,
             pathVisualizer.targets,
@@ -153,10 +184,8 @@ public class GameUIManager : MonoBehaviour
 
         Log($"계산 완료. {solvedPaths.Count}개의 경로 생성됨.");
 
-        // 시각화
         pathVisualizer.DrawSolvedPaths(solvedPaths);
 
-        // 도우미 이동
         var targetDataMap = new Dictionary<int, (List<Vector2>, List<float>)>();
         int finishedCount = 0;
 
@@ -169,13 +198,24 @@ public class GameUIManager : MonoBehaviour
                 });
         }
 
-        // 드로잉 대기
+        // -------------------------------------------------------------
+        // ★★★ [시간 측정 시작 지점] ★★★
+        // 시스템 준비 완료, 사용자 입력 대기 시작
+        // -------------------------------------------------------------
+        float inputReadyTime = Time.time;
+
         List<Vector2> userDrawnPath = new List<Vector2>();
         List<float> userDrawnTimes = new List<float>();
 
         if (infoText != null) infoText.text = "화면을 눌러 선을 따라 그리세요.";
+        Log("사용자 입력 대기 중...");
 
+        // 터치 시작 대기 (이 시간 동안 망설이면 기록됨)
         yield return new WaitUntil(() => Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame);
+
+        // ★ 반응 시간(Hesitation) 기록용 (로그에만 표시)
+        float reactionTime = Time.time - inputReadyTime;
+        Log($"사용자 반응 감지! (망설임 시간: {reactionTime:F2}초)");
 
         if (userTrailPrefab != null && canvasRectTransform != null)
         {
@@ -199,6 +239,12 @@ public class GameUIManager : MonoBehaviour
             }
             yield return null;
         }
+
+        // -------------------------------------------------------------
+        // ★★★ [시간 측정 종료 지점] ★★★
+        // -------------------------------------------------------------
+        float inputEndTime = Time.time;
+        float totalTimeTaken = inputEndTime - inputReadyTime; // 반응시간 + 그리는 시간
 
         if (infoText != null) infoText.text = "결과 분석 중...";
         yield return new WaitUntil(() => finishedCount >= solvedPaths.Count);
@@ -245,8 +291,15 @@ public class GameUIManager : MonoBehaviour
                 }
 
                 Log($"<color=green>▶ 판별 성공! 경로 {visualNumber}</color>");
+                // ★ 로그에 소요 시간 포함
+                Log($"   - 오차: {best.frechet:F2}, 속도일치: {best.velocity:P0}");
+                Log($"   - 소요 시간: {totalTimeTaken:F2}초 (반응 {reactionTime:F2}s + 실행)");
+
                 if (infoText != null) infoText.text = $"판별 성공: {visualNumber}번 경로";
-                if (detailText != null) detailText.text = $"오차: {best.frechet:F2}, 속도: {best.velocity:P0}";
+
+                // ★ UI 텍스트에도 시간 표시
+                if (detailText != null)
+                    detailText.text = $"오차: {best.frechet:F2}, 속도: {best.velocity:P0}\n시간: {totalTimeTaken:F2}s";
 
                 pathVisualizer.HighlightPath(best.targetIdx);
             }
@@ -281,61 +334,5 @@ public class GameUIManager : MonoBehaviour
         if (canvasRectTransform == null) return Vector2.zero;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPosition, null, out Vector2 localPoint);
         return localPoint;
-    }
-    // =================================================================================
-    // [기능 4] 알고리즘 모드 변경 (Dropdown 연결용)
-    // =================================================================================
-    public void SetAlgorithmMode(int modeIndex)
-    {
-        if (pathSolver != null)
-        {
-            // 1. 로그 초기화 (기존 로그 삭제)
-            ClearLog();
-
-            // 2. 모드 값 변경
-            pathSolver.currentMode = (SmartPathSolver.EvaluationMode)modeIndex;
-            Log($"=== [설정 변경] 모드: {pathSolver.currentMode} ===");
-
-            // 3. 타겟이 있다면 즉시 화면(선 + 점) 강제 갱신
-            if (pathVisualizer != null && pathVisualizer.targets != null && pathVisualizer.targets.Count > 0)
-            {
-                RefreshCurrentVisuals();
-            }
-        }
-    }
-
-    // 화면 강제 갱신 함수 (Solver 재실행 -> 로그 다시 찍힘)
-    private void RefreshCurrentVisuals()
-    {
-        // A. 기존 움직임 무조건 정지
-        if (pursuitMover3D != null)
-        {
-            pursuitMover3D.StopAllMovements();
-        }
-
-        // B. Solver 재계산 (이 과정에서 Solver가 새로운 로그를 출력함)
-        var updatedData = pathSolver.Solve(
-            pathVisualizer.startPoint,
-            pathVisualizer.targets,
-            Camera.main
-        );
-
-        // C. 선(LineRenderer) 다시 그리기
-        pathVisualizer.DrawSolvedPaths(updatedData);
-
-        // D. 도우미 객체 다시 출발시키기
-        if (pursuitMover3D != null)
-        {
-            foreach (var data in updatedData)
-            {
-                pursuitMover3D.StartMovementWithPhase(
-                    data.pathPoints,
-                    travelDuration,
-                    data.phaseValue,
-                    data.overrideColor,
-                    null
-                );
-            }
-        }
     }
 }
