@@ -92,4 +92,30 @@ public class ARPlacementManager : MonoBehaviour
         this.enabled = true;
         if (startAnalysisButton != null) startAnalysisButton.gameObject.SetActive(placedTargets.Count > 0);
     }
+    // ★★★ [추가] 외부(프리셋)에서 생성된 데이터를 넘겨받는 함수 ★★★
+    public void LoadExternalData(Transform startPoint, List<Transform> targets)
+    {
+        // 1. 데이터 인수
+        this.placedStartPoint = startPoint;
+        this.placedTargets = new List<Transform>(targets); // 리스트 복사
+
+        // 2. PathVisualizer 동기화
+        if (pathVisualizer != null)
+        {
+            pathVisualizer.startPoint = startPoint;
+            pathVisualizer.targets = this.placedTargets;
+            pathVisualizer.GenerateAndShowAllPaths(); // 선 그리기 강제 실행
+        }
+
+        // 3. UI 상태 갱신 (버튼 켜기)
+        if (infoText != null) infoText.text = $"[프리셋 로드됨] {placedTargets.Count}개 목표";
+
+        if (startAnalysisButton != null)
+        {
+            startAnalysisButton.gameObject.SetActive(true); // ★ 버튼 강제 활성화
+        }
+
+        // 4. 활성화 상태로 전환 (Idle)
+        this.enabled = true;
+    }
 }
