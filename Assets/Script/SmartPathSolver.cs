@@ -304,10 +304,9 @@ public class SmartPathSolver : MonoBehaviour
 
     private void ProcessGroupRules(List<TargetMeta> members, Vector3 startPos, Vector2 startScreenPos, Camera cam)
     {
-        // 1. 페이즈 할당 (모드 체크 내장됨)
-        ProcessPhaseOnly(members);
+        ProcessPhaseOnly(members); // 페이즈 할당
 
-        // ★ [모드 체크] 곡선 안 쓰는 모드면 직선화하고 종료
+        // [모드 체크] 직선 모드면 중단
         if (currentMode == EvaluationMode.PhaseOnly || currentMode == EvaluationMode.None)
         {
             foreach (var m in members) m.isStraight = true;
@@ -315,12 +314,28 @@ public class SmartPathSolver : MonoBehaviour
         }
 
         int N = members.Count;
-        float minX = members.Min(m => m.screenPos.x);
-        float maxX = members.Max(m => m.screenPos.x);
-        float widthRatio = (maxX - minX) / Screen.width;
 
-        // 고밀도 예외 (Full 모드일 때만)
-        if (currentMode == EvaluationMode.Full && N >= HighDensityCount && widthRatio < 0.2f)
+        // 1. 그룹의 형태(가로/세로) 및 중심 파악
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
+        float sumX = 0;
+
+        foreach (var m in members)
+        {
+            if (m.screenPos.x < minX) minX = m.screenPos.x;
+            if (m.screenPos.x > maxX) maxX = m.screenPos.x;
+            if (m.screenPos.y < minY) minY = m.screenPos.y;
+            if (m.screenPos.y > maxY) maxY = m.screenPos.y;
+            sumX += m.screenPos.x;
+        }
+
+        float groupWidth = Mathf.Abs(maxX - minX);
+        float groupHeight = Mathf.Abs(maxY - minY);
+        float groupCenterX = sumX / N; // 그룹의 무게중심 X
+        float screenWidth = Screen.width;
+
+        // 2. 고밀도 예외 (너무 좁은 영역에 많이 뭉침)
+        if (currentMode == EvaluationMode.Full && N >= HighDensityCount && (groupWidth / screenWidth) < 0.2f)
         {
             LogToUI($"[고밀도] 그룹 직선화 ({N}개)");
             foreach (var m in members)
@@ -331,12 +346,16 @@ public class SmartPathSolver : MonoBehaviour
             return;
         }
 
-        // 구역 진단
+        // ★★★ [추가된 로직] 세로 그룹 판별 ★★★
+        // 높이가 너비보다 1.5배 이상 크면 '세로 그룹'으로 간주
+        bool isVerticalGroup = groupHeight > (groupWidth * 1.5f);
+
+        // 3. 구역 진단 (중앙/외곽)
         float avgRelAngle = members.Average(m => m.relativeAngle);
         float zoneFactor = Mathf.Clamp01(Mathf.Abs(avgRelAngle) / 45.0f);
         float zoneMultiplier = Mathf.Lerp(0.5f, 2.5f, zoneFactor);
 
-        // 곡선 계산
+        // 4. 곡선 계산
         var sortedByDepth = members.OrderBy(m => m.distance3D).ToList();
         TargetMeta closest = sortedByDepth.First();
         TargetMeta farthest = sortedByDepth.Last();
@@ -348,17 +367,31 @@ public class SmartPathSolver : MonoBehaviour
             Vector3 dir = (m.worldPos - startPos).normalized;
             Vector3 visualRight = Vector3.ProjectOnPlane(cam.transform.right, dir).normalized;
             Vector3 visualUp = Vector3.ProjectOnPlane(cam.transform.up, dir).normalized;
-
-            // ★ 수정: 상하 곡선 시 비틀기 제거 -> 순수 수직 사용
-            // 아래는 단순 상/하 벡터
-            Vector3 upVec = visualUp;
-            Vector3 downVec = -visualUp;
+            Vector3 downTwist = (-visualUp * 0.8f + visualRight * 0.2f).normalized;
 
             Vector3 bendVector = Vector3.zero;
-            bool isVertical = false; // 수직 여부 체크
-            bool isLeftInGroup = (i < centerIdx);
 
-            if (N % 2 == 1 && i == centerIdx) m.isStraight = true;
+            // ★★★ [수정된 좌/우 판단 로직] ★★★
+            bool isLeftInGroup;
+
+            if (isVerticalGroup)
+            {
+                // 세로 그룹이라면: 순서(Index) 무시하고, 실제 화면 좌표(X)로 판단
+                // 그룹 중심보다 왼쪽에 있으면 왼쪽 곡선, 오른쪽에 있으면 오른쪽 곡선
+                isLeftInGroup = m.screenPos.x < groupCenterX;
+            }
+            else
+            {
+                // 가로 그룹(일반)이라면: 정렬된 순서(Index)를 따름
+                isLeftInGroup = (i < centerIdx);
+            }
+
+            // --- 패턴 할당 (기존과 동일) ---
+            if (N % 2 == 1 && i == centerIdx && !isVerticalGroup)
+            {
+                // 홀수 그룹의 정중앙 (세로 그룹일 때는 제외, 확실히 갈라주기 위해)
+                m.isStraight = true;
+            }
             else if (N <= 4)
             {
                 bendVector = isLeftInGroup ? -visualRight : visualRight;
@@ -368,33 +401,24 @@ public class SmartPathSolver : MonoBehaviour
                 if (isLeftInGroup)
                 {
                     if (i % 2 == 0) bendVector = -visualRight;
-                    else
-                    {
-                        bendVector = upVec; // 위쪽
-                        isVertical = true;
-                    }
+                    else bendVector = (visualUp * 0.8f - visualRight * 0.2f).normalized;
                 }
                 else
                 {
+                    // 세로 그룹이거나 일반적인 경우
+                    // 만약 세로 그룹이라 인덱스 순서가 꼬였다면 여기서 i값 기반 분산이 
+                    // 약간 랜덤하게 보일 순 있지만, 방향(좌/우)은 확실히 맞게 됨.
                     int rIdx = i - centerIdx;
                     if (rIdx % 2 == 0) bendVector = visualRight;
-                    else
-                    {
-                        bendVector = downVec; // 아래쪽
-                        isVertical = true;
-                    }
+                    else bendVector = downTwist;
                 }
             }
 
             float ratio = CurveRatioStrong;
-            if (m == closest) { ratio = CurveRatioWeak; if (N % 2 == 1) m.isStraight = true; }
+            if (m == closest) { ratio = CurveRatioWeak; if (N % 2 == 1 && !isVerticalGroup) m.isStraight = true; }
             else if (m == farthest) ratio = CurveRatioStrong * 1.2f;
 
             float finalOffset = m.distance3D * ratio * zoneMultiplier;
-
-            // ★ [수정] 수직(위/아래) 방향일 경우, 강도를 5배(0.2배) 약하게 적용
-            if (isVertical) finalOffset *= 0.2f;
-
             Vector3 mid = (startPos + m.worldPos) * 0.5f;
             m.assignedControlPoint = mid + (bendVector * finalOffset);
         }
