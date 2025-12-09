@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 248851143f608d140b0fb04faaa74241, type: 3}
+  m_Name: Preset_20251210_015156
+  m_EditorClassIdentifier: 
+  description: Preset_51_56
+  relativePositions:
+  - {x: -0.4823408, y: 0, z: 0.6549516}
+  - {x: -0.38315892, y: 0, z: 0.7599273}
+  - {x: -0.30240154, y: 0, z: 0.79218745}
+  - {x: -0.79937124, y: 0, z: 2.0881953}
+  - {x: -0.68712234, y: 0, z: 2.1947842}
+  - {x: 0.118417025, y: 0.52975875, z: 2.4368448}
+  - {x: 0.2810738, y: 0.42510104, z: 2.4368446}
+  - {x: 0.37213898, y: 0.2787701, z: 2.4368446}
+  - {x: 0.29859543, y: 0, z: 0.51593864}
+  - {x: 0.37518907, y: 0, z: 0.32271388}
+  - {x: 0.4062879, y: 0, z: 0.13262396}
+  - {x: 0.38671756, y: 0, z: -0.019013084}
+  - {x: 1.3548803, y: 0, z: 2.3898365}
+  - {x: 0.7361008, y: 0, z: 0.49735543}
+  - {x: 0.55149984, y: 0, z: 2.1863723}
+  - {x: 0.6417134, y: 0, z: 2.1129503}
