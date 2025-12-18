@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 848409ee8ba454f42a5ddff137688a27, type: 3}
+  m_Name: MarkerImageLibrary
+  m_EditorClassIdentifier: 
+  m_GuidLow: 4908018504155586968
+  m_GuidHigh: 3846957249358106812
+  m_DataStore:
+    m_Storage: []
+  m_Images:
+  - m_SerializedGuid:
+      m_GuidLow: 4854677568257493789
+      m_GuidHigh: 17564167723998747030
+    m_SerializedTextureGuid:
+      m_GuidLow: 4041044941375213844
+      m_GuidHigh: 14128221615621619081
+    m_Size: {x: 0.08, y: 0.08}
+    m_SpecifySize: 1
+    m_Name: StartMarker
+    m_Texture: {fileID: 0}
+  - m_SerializedGuid:
+      m_GuidLow: 4760438920245145654
+      m_GuidHigh: 10408669376044021386
+    m_SerializedTextureGuid:
+      m_GuidLow: 15552318473075926952
+      m_GuidHigh: 6601294056762237210
+    m_Size: {x: 0.08, y: 0.08}
+    m_SpecifySize: 1
+    m_Name: Target_A
+    m_Texture: {fileID: 0}
+  - m_SerializedGuid:
+      m_GuidLow: 5619424769229588017
+      m_GuidHigh: 10364891622278443411
+    m_SerializedTextureGuid:
+      m_GuidLow: 16146591760204788306
+      m_GuidHigh: 10304760078577037816
+    m_Size: {x: 0.08, y: 0.08}
+    m_SpecifySize: 1
+    m_Name: Target_B
+    m_Texture: {fileID: 0}
+  - m_SerializedGuid:
+      m_GuidLow: 4612806835379510074
+      m_GuidHigh: 3796235241362207658
+    m_SerializedTextureGuid:
+      m_GuidLow: 5333538860277448109
+      m_GuidHigh: 119890684417016360
+    m_Size: {x: 0.08, y: 0.08}
+    m_SpecifySize: 1
+    m_Name: Target_C
+    m_Texture: {fileID: 0}
+  - m_SerializedGuid:
+      m_GuidLow: 5327896228886971389
+      m_GuidHigh: 7527359281137688202
+    m_SerializedTextureGuid:
+      m_GuidLow: 14331783400276332746
+      m_GuidHigh: 17089898021291932313
+    m_Size: {x: 0.08, y: 0.08}
+    m_SpecifySize: 1
+    m_Name: Target_D
+    m_Texture: {fileID: 0}

@@ -1,43 +1,44 @@
-using UnityEngine;
-using System.Collections;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 public class PursuitMover : MonoBehaviour
 {
-    [Header("오브젝트 설정")]
     public GameObject helperPrefab;
-    
-    private GameObject currentHelperInstance;
-    private Coroutine movementCoroutine;
+    private List<ObjectMover3D> activeMovers = new List<ObjectMover3D>();
 
-    // System.Action onComplete 콜백 제거
-    public void StartMovement(List<Vector3> path, float duration)
+    public void StartMovementWithPhase(List<Vector3> path, float duration, float startPhase, Color? color, System.Action<List<Vector2>, List<float>> onComplete)
     {
-        if (movementCoroutine != null) StopCoroutine(movementCoroutine);
-        if (currentHelperInstance != null) Destroy(currentHelperInstance);
+        if (path == null || path.Count == 0) return;
 
-        currentHelperInstance = Instantiate(helperPrefab, path[0], Quaternion.identity);
-        movementCoroutine = StartCoroutine(MoveAlongPath(path, duration));
+        // 생성: 위치는 일단 path[0]이지만, 아래에서 즉시 옮길 것임.
+        GameObject helperInstance = Instantiate(helperPrefab, path[0], Quaternion.identity);
+
+        if (color.HasValue)
+        {
+            var renderer = helperInstance.GetComponent<Renderer>();
+            if (renderer != null) renderer.material.color = color.Value;
+        }
+
+        ObjectMover3D mover = helperInstance.GetComponent<ObjectMover3D>();
+        if (mover != null)
+        {
+            activeMovers.Add(mover);
+
+            // ★★★ 중요: 코루틴 시작 전에 강제로 위치를 잡는 함수를 먼저 호출 ★★★
+            // 이렇게 하면 프레임이 그려지기 전에 위치가 수정됩니다.
+            mover.ForceSetPosition(path, startPhase);
+
+            StartCoroutine(mover.MoveAlongPathWithPhase(path, duration, startPhase, onComplete));
+        }
+        else
+        {
+            Destroy(helperInstance);
+        }
     }
 
-    private IEnumerator MoveAlongPath(List<Vector3> path, float duration)
+    public void StopAllMovements()
     {
-        float elapsedTime = 0f;
-        Vector3 startPos = path[0];
-        Vector3 endPos = path[path.Count - 1];
-        
-        while (elapsedTime < duration)
-        {
-            float progress = elapsedTime / duration;
-            currentHelperInstance.transform.position = Vector3.Lerp(startPos, endPos, progress);
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-        
-        currentHelperInstance.transform.position = endPos;
-        yield return new WaitForSeconds(1.0f);
-        Destroy(currentHelperInstance);
-        
-        // onComplete 호출 제거
+        foreach (var mover in activeMovers) if (mover != null) mover.StopMovement();
+        activeMovers.Clear();
     }
 }

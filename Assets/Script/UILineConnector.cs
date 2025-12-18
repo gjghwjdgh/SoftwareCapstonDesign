@@ -1,128 +1,77 @@
-using UnityEngine;
-using UnityEngine.UI;
-using System.Collections;
+﻿using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
 
+[RequireComponent(typeof(LineRenderer))]
 public class UILineConnector : MonoBehaviour
 {
-    [Header("UI 설정")]
-    public Image helperPrefab; // 2D 퍼슈트 도우미로 사용할 UI Image 프리팹
+    private LineRenderer lineRenderer;
+    private Camera mainCamera;
 
+    // 경로 데이터를 저장하기 위한 변수
     private Transform startPoint3D;
     private Transform target3D;
-    private Camera mainCamera;
-    private RectTransform rectTransform;
-    private Image lineImage;
+    private List<Vector3> worldCurvePath; // 곡선 원본 경로(월드 좌표)
 
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
 
-    private Coroutine pursuitCoroutine;
+    void Awake()
+    {
+        lineRenderer = GetComponent<LineRenderer>();
+        lineRenderer.sortingOrder = 1;
+    }
 
-    public void Initialize(Transform start, Transform target, Camera camera)
+    public void InitializeLine(Transform start, Transform target, Camera camera)
     {
         this.startPoint3D = start;
         this.target3D = target;
         this.mainCamera = camera;
-        this.rectTransform = GetComponent<RectTransform>();
-        this.lineImage = GetComponent<Image>();
+        this.worldCurvePath = null;
+        lineRenderer.positionCount = 2;
+        SetHighlight(false);
+    }
+
+    public void InitializeCurve(List<Vector3> worldPath, Camera camera)
+    {
+        this.worldCurvePath = worldPath;
+        this.mainCamera = camera;
+        this.startPoint3D = null;
+        this.target3D = null;
+        lineRenderer.positionCount = worldPath.Count;
         SetHighlight(false);
     }
 
     void Update()
     {
-        if (startPoint3D == null || target3D == null || mainCamera == null) return;
+        if (mainCamera == null) return;
 
-        Vector3 targetViewport = mainCamera.WorldToViewportPoint(target3D.position);
-        bool isTargetVisible = targetViewport.z > 0 && targetViewport.x > 0 && targetViewport.x < 1 && targetViewport.y > 0 && targetViewport.y < 1;
-        
-        lineImage.enabled = isTargetVisible;
-
-        if (isTargetVisible)
+        // 곡선 모드일 경우
+        if (worldCurvePath != null && worldCurvePath.Any())
         {
-            UpdateLinePosition();
+            // 매 프레임마다 월드 경로를 UI 로컬 경로로 새로 변환하여 다시 그립니다.
+            var localPath = worldCurvePath.Select(p => WorldToCanvasLocal(p)).ToArray();
+            lineRenderer.SetPositions(localPath);
+        }
+        // 직선 모드일 경우
+        else if (startPoint3D != null && target3D != null)
+        {
+            // 매 프레임마다 시작점과 끝점의 위치를 새로 계산하여 다시 그립니다.
+            lineRenderer.SetPosition(0, WorldToCanvasLocal(startPoint3D.position));
+            lineRenderer.SetPosition(1, WorldToCanvasLocal(target3D.position));
         }
     }
 
-    void UpdateLinePosition()
+    private Vector3 WorldToCanvasLocal(Vector3 worldPosition)
     {
-        Vector3 startScreenPoint3D = mainCamera.WorldToScreenPoint(startPoint3D.position);
-        Vector2 targetScreenPoint = mainCamera.WorldToScreenPoint(target3D.position);
-        Vector2 finalStartScreenPoint;
-
-        bool isStartOnScreen = startScreenPoint3D.z > 0 && startScreenPoint3D.x > 0 && startScreenPoint3D.x < Screen.width && startScreenPoint3D.y > 0 && startScreenPoint3D.y < Screen.height;
-
-        if (isStartOnScreen)
-        {
-            finalStartScreenPoint = startScreenPoint3D;
-        }
-        else
-        {
-            Vector2 screenCenter = new Vector2(Screen.width / 2, Screen.height / 2);
-            Vector2 startPointScreen = startScreenPoint3D;
-            if (startScreenPoint3D.z < 0)
-            {
-                startPointScreen = screenCenter + (screenCenter - (Vector2)startScreenPoint3D);
-            }
-            Vector2 fromCenter = startPointScreen - screenCenter;
-            float angleRad = Mathf.Atan2(fromCenter.y, fromCenter.x);
-            float tanAngle = Mathf.Tan(angleRad);
-            float screenAspect = (float)Screen.width / Screen.height;
-            float x, y;
-            if (Mathf.Abs(fromCenter.x) > Mathf.Abs(fromCenter.y) * screenAspect)
-            { 
-                x = (fromCenter.x > 0) ? Screen.width : 0;
-                y = screenCenter.y + (x - screenCenter.x) * tanAngle;
-            }
-            else
-            { 
-                y = (fromCenter.y > 0) ? Screen.height : 0;
-                if (Mathf.Approximately(tanAngle, 0)) // tan 0으로 나누는 것 방지
-                {
-                    x = screenCenter.x;
-                }
-                else
-                {
-                    x = screenCenter.x + (y - screenCenter.y) / tanAngle;
-                }
-            }
-            finalStartScreenPoint = new Vector2(x, y);
-        }
-
-        Vector2 difference = targetScreenPoint - finalStartScreenPoint;
-        rectTransform.sizeDelta = new Vector2(difference.magnitude, 5f);
-        rectTransform.position = finalStartScreenPoint + (difference / 2);
-        rectTransform.localEulerAngles = new Vector3(0, 0, Mathf.Atan2(difference.y, difference.x) * Mathf.Rad2Deg);
+        Vector2 screenPoint = mainCamera.WorldToScreenPoint(worldPosition);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            transform.parent as RectTransform, screenPoint, mainCamera, out Vector2 localPoint);
+        return localPoint;
     }
 
-    public void StartPursuit(float duration)
-    {
-        if (pursuitCoroutine != null) StopCoroutine(pursuitCoroutine);
-        pursuitCoroutine = StartCoroutine(AnimateHelper(duration));
-    }
-
-    private IEnumerator AnimateHelper(float duration)
-    {
-        Image helper = Instantiate(helperPrefab, transform.parent);
-        float elapsedTime = 0f;
-
-        while (elapsedTime < duration)
-        {
-            float progress = elapsedTime / duration;
-            
-            // 현재 라인의 양 끝점을 계산
-            Vector2 startPos = rectTransform.position - (Vector3)rectTransform.right * (rectTransform.sizeDelta.x / 2f);
-            Vector2 endPos = rectTransform.position + (Vector3)rectTransform.right * (rectTransform.sizeDelta.x / 2f);
-            
-            helper.rectTransform.position = Vector2.Lerp(startPos, endPos, progress);
-
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-        Destroy(helper.gameObject);
-    }
-    
     public void SetHighlight(bool highlighted)
     {
-        lineImage.color = highlighted ? highlightColor : normalColor;
+        if (lineRenderer != null) lineRenderer.startColor = lineRenderer.endColor = highlighted ? highlightColor : normalColor;
     }
 }

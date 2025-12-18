@@ -1,4 +1,5 @@
-using UnityEngine;
+﻿using UnityEngine;
+using System.Collections.Generic;
 
 public class PathDrawer : MonoBehaviour
 {
@@ -6,37 +7,42 @@ public class PathDrawer : MonoBehaviour
     public Color normalColor = Color.gray;
     public Color highlightColor = Color.cyan;
 
-    private Transform startPoint;
-    private Transform target;
+    // ★★★ 외부에서 강제로 지정하는 색상 (그룹 색상 등) ★★★
+    private Color? overrideColor = null;
 
-    public void Initialize(Transform start, Transform target)
+    public void InitializeCurve(List<Vector3> pathPoints)
     {
-        this.startPoint = start;
-        this.target = target;
-        lineRenderer3D.positionCount = 2;
+        lineRenderer3D.positionCount = pathPoints.Count;
+        lineRenderer3D.SetPositions(pathPoints.ToArray());
         lineRenderer3D.widthMultiplier = 0.05f;
         SetHighlight(false);
     }
 
-    void Update()
+    // ★★★ 이 함수가 없어서 오류가 났습니다. 추가해주세요! ★★★
+    public void SetColor(Color? color)
     {
-        if (startPoint != null && target != null)
-        {
-            // 타겟이 보일 때만 선을 그림 (2D와 동일한 조건 적용)
-            Vector3 viewportPoint = Camera.main.WorldToViewportPoint(target.position);
-            bool isTargetVisible = viewportPoint.z > 0 && viewportPoint.x > 0 && viewportPoint.x < 1 && viewportPoint.y > 0 && viewportPoint.y < 1;
-            lineRenderer3D.enabled = isTargetVisible;
-
-            if(isTargetVisible)
-            {
-                lineRenderer3D.SetPosition(0, startPoint.position);
-                lineRenderer3D.SetPosition(1, target.position);
-            }
-        }
+        overrideColor = color;
+        UpdateColor();
     }
 
     public void SetHighlight(bool highlighted)
     {
-        lineRenderer3D.startColor = lineRenderer3D.endColor = highlighted ? highlightColor : normalColor;
+        if (highlighted)
+        {
+            // 하이라이트 될 때는 무조건 형광색(Cyan)
+            lineRenderer3D.startColor = lineRenderer3D.endColor = highlightColor;
+        }
+        else
+        {
+            // 평소에는 지정된 그룹 색상 또는 회색
+            UpdateColor();
+        }
+    }
+
+    private void UpdateColor()
+    {
+        // overrideColor가 있으면(그룹 색상) 그걸 쓰고, 없으면 기본 회색(normalColor) 사용
+        Color finalColor = overrideColor.HasValue ? overrideColor.Value : normalColor;
+        lineRenderer3D.startColor = lineRenderer3D.endColor = finalColor;
     }
 }

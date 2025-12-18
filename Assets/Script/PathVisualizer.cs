@@ -1,85 +1,89 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 public class PathVisualizer : MonoBehaviour
 {
     [Header("핵심 설정")]
     public Transform startPoint;
-    public List<Transform> targets;
-    public Transform uiCanvas;
-
-    [Header("프리팹")]
+    public List<Transform> targets = new List<Transform>();
     public GameObject lineDrawer3DPrefab;
-    public GameObject uiLinePrefab;
+
+    // Solver 자동 연결
+    public SmartPathSolver pathSolver;
 
     private List<PathDrawer> pathDrawers3D = new List<PathDrawer>();
-    private List<UILineConnector> uiLines2D = new List<UILineConnector>();
-    private Camera mainCamera;
-    
-    private bool is3DMode = true;
-    // --- ▼ 여기가 추가된 부분입니다 ▼ ---
-    // 외부에서 현재 모드(is3DMode)가 무엇인지 '읽을 수만' 있도록 공개하는 프로퍼티(Property)입니다.
-    public bool Is3DMode => is3DMode;
-    // --- ▲ 여기가 추가된 부분입니다 ▲ ---
+    private Dictionary<int, PathDrawer> indexToDrawerMap = new Dictionary<int, PathDrawer>();
+
+    // 계산된 최신 경로 데이터를 저장 (나중에 GameUIManager가 씀)
+    public List<PathResultData> LatestSolvedPaths { get; private set; }
 
     void Start()
     {
-        mainCamera = Camera.main;
+        if (pathSolver == null) pathSolver = FindAnyObjectByType<SmartPathSolver>();
     }
 
-    public void ShowAllPaths()
+    // ★★★ 타겟이 추가될 때마다 호출될 함수 ★★★
+    public void GenerateAndShowAllPaths()
     {
-        foreach (var line in pathDrawers3D) if(line != null) Destroy(line.gameObject);
-        foreach (var line in uiLines2D) if(line != null) Destroy(line.gameObject);
-        pathDrawers3D.Clear();
-        uiLines2D.Clear();
+        if (startPoint == null || targets == null || targets.Count == 0 || pathSolver == null) return;
 
-        for (int i = 0; i < targets.Count; i++)
+        // 1. 즉시 Solver 계산
+        LatestSolvedPaths = pathSolver.Solve(startPoint, targets, Camera.main);
+
+        // 2. 계산된 데이터로 그리기 (여기서 DrawSolvedPaths를 호출)
+        DrawSolvedPaths(LatestSolvedPaths);
+    }
+
+    // ★★★ 이 함수가 없어서 오류가 났던 것입니다. 추가했습니다. ★★★
+    public void DrawSolvedPaths(List<PathResultData> solvedData)
+    {
+        ClearLines();
+        LatestSolvedPaths = solvedData;
+
+        // solvedData는 이미 [왼쪽 -> 오른쪽] 등으로 정렬된 상태입니다.
+        for (int i = 0; i < solvedData.Count; i++)
         {
-            GameObject drawerInstance3D = Instantiate(lineDrawer3DPrefab, transform);
-            PathDrawer drawer3D = drawerInstance3D.GetComponent<PathDrawer>();
-            drawer3D.Initialize(startPoint, targets[i]);
-            pathDrawers3D.Add(drawer3D);
+            var data = solvedData[i];
 
-            GameObject uiLineInstance = Instantiate(uiLinePrefab, uiCanvas);
-            UILineConnector uiLine = uiLineInstance.GetComponent<UILineConnector>();
-            uiLine.Initialize(startPoint, targets[i], mainCamera);
-            uiLines2D.Add(uiLine);
+            // 1. 선 그리기 (색상 포함)
+            CreateDrawer(data.targetIndex, data.pathPoints, data.overrideColor);
+
+            // 2. 타겟에 번호표 붙이기 (1번부터 시작)
+            // data.targetIndex는 targets 리스트의 원래 인덱스입니다.
+            if (data.targetIndex < targets.Count && targets[data.targetIndex] != null)
+            {
+                TargetLabel label = targets[data.targetIndex].GetComponentInChildren<TargetLabel>();
+                if (label != null)
+                {
+                    // i는 0부터 시작하므로 1을 더해서 1, 2, 3... 으로 표시
+                    label.SetNumber(i + 1);
+                }
+            }
         }
-        UpdateViewMode();
-    }
-    
-    public Transform GetTargetTransform(int index)
-    {
-        if (index < 0 || index >= targets.Count) return null;
-        return targets[index];
-    }
-    
-    public void SwitchViewMode()
-    {
-        is3DMode = !is3DMode;
-        UpdateViewMode();
     }
 
-    void UpdateViewMode()
+    // 색상까지 받는 버전으로 수정
+    private void CreateDrawer(int index, List<Vector3> points, Color? color)
     {
-        foreach (var line in pathDrawers3D) line.gameObject.SetActive(is3DMode);
-        foreach (var line in uiLines2D) line.gameObject.SetActive(!is3DMode);
+        PathDrawer drawer = Instantiate(lineDrawer3DPrefab, transform).GetComponent<PathDrawer>();
+        drawer.InitializeCurve(points);
+
+        // 그룹 색상 적용
+        drawer.SetColor(color);
+
+        pathDrawers3D.Add(drawer);
+        indexToDrawerMap[index] = drawer;
     }
 
     public void HighlightPath(int targetIndex)
     {
-        for (int i = 0; i < targets.Count; i++)
-        {
-            bool isHighlighted = (i == targetIndex);
-            if(i < pathDrawers3D.Count && pathDrawers3D[i] != null) pathDrawers3D[i].SetHighlight(isHighlighted);
-            if(i < uiLines2D.Count && uiLines2D[i] != null) uiLines2D[i].SetHighlight(isHighlighted);
-        }
+        foreach (var kvp in indexToDrawerMap) kvp.Value.SetHighlight(kvp.Key == targetIndex);
     }
 
-    public UILineConnector GetUILine(int index)
+    private void ClearLines()
     {
-        if (index < 0 || index >= uiLines2D.Count) return null;
-        return uiLines2D[index];
+        foreach (var line in pathDrawers3D) if (line != null) Destroy(line.gameObject);
+        pathDrawers3D.Clear();
+        indexToDrawerMap.Clear();
     }
 }
